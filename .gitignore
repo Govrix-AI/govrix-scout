@@ -1,0 +1,30 @@
+# Rust
+**/target/
+**/*.rs.bk
+
+# Node / Dashboard
+**/node_modules/
+**/dist/
+**/.pnpm-store/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Docker volumes
+pgdata/
+
+# Misc
+*.log
+*.pid
