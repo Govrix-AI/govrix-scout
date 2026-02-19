@@ -1,0 +1,12 @@
+[package]
+name = "govrix-common"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+agentmesh-common = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+figment = { workspace = true }

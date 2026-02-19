@@ -1,8 +1,6 @@
-﻿*.tmp
-*.bak
-.DS_Store
-Thumbs.db
-*.swp
-*~
-.env
+/target
 node_modules/
+dist/
+.env
+*.swp
+.DS_Store
