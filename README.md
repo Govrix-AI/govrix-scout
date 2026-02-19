@@ -58,23 +58,43 @@ All Scout endpoints are available. Platform adds:
 
 | Method | Path | Description |
 |--------|------|-------------|
+| GET | `/health` | Liveness/readiness probe — unauthenticated |
 | GET | `/api/v1/platform/health` | Status, version, license tier, mTLS state |
 | GET | `/api/v1/platform/license` | Tier, max agents, enabled features |
 | GET | `/api/v1/policies` | Rule counts, policy/PII enabled flags |
 | POST | `/api/v1/policies/reload` | Hot-reload YAML rules at runtime |
 | GET | `/api/v1/tenants` | Tenant list with agent limits |
+| POST | `/api/v1/tenants` | Create a new tenant (`{"name": "..."}`) |
+| POST | `/api/v1/certs/issue` | Issue mTLS agent cert (Enterprise only) |
 
 `POST /api/v1/policies/reload` accepts `{"rules_yaml": "..."}` or `{"rules_file": "/path/to/rules.yaml"}`.
 
+`POST /api/v1/certs/issue` accepts `{"agent_id": "..."}` and returns `cert_pem`, `key_pem`, `expires_at`.
+
+### Authentication
+
+All `/api/v1/*` endpoints require a Bearer token when `AGENTMESH_API_KEY` is set:
+
+```bash
+curl -H "Authorization: Bearer $AGENTMESH_API_KEY" http://localhost:4001/api/v1/platform/health
+```
+
+If `AGENTMESH_API_KEY` is unset, all requests are allowed (dev mode). The `/health` endpoint is always unauthenticated.
+
+### Example Policy File
+
+See `config/policies.example.yaml` for a fully-annotated example with all supported fields and operators.
+
 ## Architecture
 
-Four crates:
+Five crates:
 
 ```
 govrix-common   — config loading, license validation, tenant types
 govrix-policy   — YAML policy engine, PII masking, budget tracker, Scout hook bridge
 govrix-identity — CA generation (rcgen), per-agent cert issuance, mTLS config
 govrix-server   — startup orchestration, REST API, Scout proxy integration
+govrix-keygen   — CLI tool for generating base64-encoded license keys
 ```
 
 `govrix-server` owns startup: validates the license, optionally generates a CA, initializes the policy engine and budget tracker, then hands a `GovrixPolicyHook` to Scout's proxy. The management API merges Scout's routes with the platform's own routes.

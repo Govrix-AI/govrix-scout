@@ -13,6 +13,71 @@ mod api;
 use std::net::SocketAddr;
 use std::sync::{Arc, RwLock};
 
+/// Forward a request arriving on the mTLS TLS listener to the plain-HTTP Scout proxy.
+///
+/// This implements TLS termination: Enterprise agents connect via TLS/mTLS on port 4443,
+/// and their requests are forwarded to the Scout proxy (port 4000) which handles policy
+/// enforcement, budget checks, and event capture.
+async fn mtls_forward(
+    req: axum::extract::Request,
+    proxy_port: u16,
+) -> axum::response::Response {
+    use axum::body::Body;
+    use axum::http::StatusCode;
+    use axum::response::IntoResponse;
+
+    let client = reqwest::Client::new();
+    let method_str = req.method().as_str().to_string();
+    let uri = req.uri().clone();
+    let headers = req.headers().clone();
+
+    let body_bytes = match axum::body::to_bytes(req.into_body(), 32 * 1024 * 1024).await {
+        Ok(b) => b,
+        Err(e) => {
+            return (StatusCode::BAD_REQUEST, format!("body read error: {e}")).into_response();
+        }
+    };
+
+    let path_and_query = uri.path_and_query().map(|p| p.as_str()).unwrap_or("/");
+    let target_url = format!("http://127.0.0.1:{proxy_port}{path_and_query}");
+
+    let method = reqwest::Method::from_bytes(method_str.as_bytes())
+        .unwrap_or(reqwest::Method::GET);
+
+    let mut builder = client.request(method, &target_url).body(body_bytes);
+    for (name, value) in headers.iter() {
+        // Skip hop-by-hop headers that should not be forwarded.
+        let lower = name.as_str().to_lowercase();
+        if lower == "host" || lower == "content-length" || lower == "transfer-encoding" {
+            continue;
+        }
+        builder = builder.header(name.as_str(), value.as_bytes());
+    }
+
+    match builder.send().await {
+        Ok(resp) => {
+            let status = StatusCode::from_u16(resp.status().as_u16())
+                .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+            let mut builder = axum::response::Response::builder().status(status);
+            for (name, value) in resp.headers().iter() {
+                let lower = name.as_str().to_lowercase();
+                if lower == "transfer-encoding" {
+                    continue;
+                }
+                builder = builder.header(name.as_str(), value.as_bytes());
+            }
+            let body_bytes = resp.bytes().await.unwrap_or_default();
+            builder.body(Body::from(body_bytes)).unwrap_or_else(|_| {
+                StatusCode::INTERNAL_SERVER_ERROR.into_response()
+            })
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, target = %target_url, "mTLS forward failed");
+            (StatusCode::BAD_GATEWAY, format!("upstream proxy error: {e}")).into_response()
+        }
+    }
+}
+
 use agentmesh_common::config::Config;
 use agentmesh_proxy::{api as scout_api, events, policy::PolicyHook, proxy};
 use govrix_common::config::PlatformConfig;
@@ -26,9 +91,11 @@ use tracing_subscriber::EnvFilter;
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // ── Logging ───────────────────────────────────────────────────────────────
+    // Priority: RUST_LOG (fine-grained) > GOVRIX_LOG_LEVEL > AGENTMESH_LOG_LEVEL > "info"
     tracing_subscriber::fmt()
         .with_env_filter(
-            EnvFilter::try_from_env("GOVRIX_LOG_LEVEL")
+            EnvFilter::try_from_env("RUST_LOG")
+                .or_else(|_| EnvFilter::try_from_env("GOVRIX_LOG_LEVEL"))
                 .or_else(|_| EnvFilter::try_from_env("AGENTMESH_LOG_LEVEL"))
                 .unwrap_or_else(|_| EnvFilter::new("info")),
         )
@@ -207,15 +274,26 @@ async fn main() -> anyhow::Result<()> {
         let mtls_addr: SocketAddr = format!("0.0.0.0:{}", platform_cfg.platform.mtls_proxy_port)
             .parse()
             .expect("invalid mTLS port");
-        tracing::info!(addr = %mtls_addr, "mTLS TLS listener starting");
+        // Forward mTLS traffic to the Scout proxy on its plain-HTTP port.
+        // This is a TLS termination proxy: agents with mTLS certs connect here,
+        // their requests pass through the same policy enforcement at the Scout proxy.
+        let inner_proxy_port = config.proxy.port;
+        tracing::info!(
+            addr = %mtls_addr,
+            inner_port = inner_proxy_port,
+            "mTLS TLS proxy starting (forwarding to Scout proxy)"
+        );
         tokio::spawn(async move {
-            let app =
-                axum::Router::new().route("/health", axum::routing::get(|| async { "mTLS OK" }));
+            let app = axum::Router::new()
+                .route("/health", axum::routing::get(|| async { "mTLS OK" }))
+                .fallback(move |req: axum::extract::Request| {
+                    mtls_forward(req, inner_proxy_port)
+                });
             if let Err(e) = axum_server::bind_rustls(mtls_addr, tls_config)
                 .serve(app.into_make_service())
                 .await
             {
-                tracing::error!("mTLS server error: {e}");
+                tracing::error!("mTLS proxy error: {e}");
             }
         });
     }
@@ -249,6 +327,9 @@ async fn main() -> anyhow::Result<()> {
         max_agents: license_info.max_agents,
         policy_enabled: license_info.policy_enabled,
         pii_masking_enabled: license_info.pii_masking_enabled,
+        compliance_enabled: license_info.compliance_enabled,
+        a2a_identity_enabled: license_info.a2a_identity_enabled,
+        retention_days: license_info.retention_days,
         mtls_enabled: mtls_config.is_mtls_enabled(),
         version: env!("CARGO_PKG_VERSION"),
         engine: Arc::clone(&policy_engine),

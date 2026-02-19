@@ -24,6 +24,9 @@ pub struct PlatformState {
     pub max_agents: u32,
     pub policy_enabled: bool,
     pub pii_masking_enabled: bool,
+    pub compliance_enabled: bool,
+    pub a2a_identity_enabled: bool,
+    pub retention_days: u32,
     pub mtls_enabled: bool,
     pub version: &'static str,
     pub engine: Arc<RwLock<PolicyEngine>>,
@@ -58,6 +61,9 @@ struct LicenseResponse {
 struct LicenseFeatures {
     policy_enabled: bool,
     pii_masking_enabled: bool,
+    compliance_enabled: bool,
+    a2a_identity_enabled: bool,
+    retention_days: u32,
 }
 
 /// Request body for `POST /api/v1/policies/reload`.
@@ -150,6 +156,9 @@ async fn license_info(State(state): State<Arc<PlatformState>>) -> Json<LicenseRe
         features: LicenseFeatures {
             policy_enabled: state.policy_enabled,
             pii_masking_enabled: state.pii_masking_enabled,
+            compliance_enabled: state.compliance_enabled,
+            a2a_identity_enabled: state.a2a_identity_enabled,
+            retention_days: state.retention_days,
         },
     })
 }
@@ -279,8 +288,13 @@ async fn require_api_key(req: Request<Body>, next: Next) -> Response {
     }
 }
 
+async fn health_check() -> (StatusCode, &'static str) {
+    (StatusCode::OK, "ok")
+}
+
 pub fn platform_router(state: Arc<PlatformState>) -> Router {
-    Router::new()
+    // Protected routes require a valid API key when AGENTMESH_API_KEY is set.
+    let protected = Router::new()
         .route("/api/v1/platform/health", get(platform_health))
         .route("/api/v1/platform/license", get(license_info))
         .route("/api/v1/policies", get(list_policies))
@@ -288,7 +302,12 @@ pub fn platform_router(state: Arc<PlatformState>) -> Router {
         .route("/api/v1/tenants", get(list_tenants).post(create_tenant))
         .route("/api/v1/certs/issue", post(issue_cert))
         .layer(middleware::from_fn(require_api_key))
-        .with_state(state)
+        .with_state(state);
+
+    // /health is unauthenticated so K8s liveness/readiness probes work without a key.
+    Router::new()
+        .route("/health", get(health_check))
+        .merge(protected)
 }
 
 #[cfg(test)]
@@ -304,6 +323,9 @@ mod tests {
             max_agents: 10,
             policy_enabled: true,
             pii_masking_enabled: false,
+            compliance_enabled: true,
+            a2a_identity_enabled: true,
+            retention_days: 365,
             mtls_enabled: false,
             version: "test",
             engine: Arc::new(RwLock::new(PolicyEngine::new())),
