@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: govrix-config
+  namespace: govrix
+data:
+  govrix.toml: |
+    [proxy]
+    port = 4000
+    bind = "0.0.0.0"
+
+    [api]
+    port = 4001
+    bind = "0.0.0.0"
+
+    [database]
+    url = "postgresql://govrix:govrix@postgres:5432/govrix"
+
+    [platform]
+    mtls_proxy_port = 4443

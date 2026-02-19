@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: govrix
+  namespace: govrix
+  labels:
+    app: govrix
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: govrix
+  template:
+    metadata:
+      labels:
+        app: govrix
+    spec:
+      containers:
+      - name: govrix
+        image: govrix:latest
+        ports:
+        - containerPort: 4000
+          name: proxy
+        - containerPort: 4001
+          name: api
+        - containerPort: 4443
+          name: mtls
+        env:
+        - name: GOVRIX_LOG_LEVEL
+          value: "info"
+        - name: GOVRIX_LICENSE_KEY
+          valueFrom:
+            secretKeyRef:
+              name: govrix-secrets
+              key: GOVRIX_LICENSE_KEY
+        - name: GOVRIX_CONFIG
+          value: "/etc/govrix/govrix.toml"
+        volumeMounts:
+        - name: config
+          mountPath: /etc/govrix
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 4001
+          initialDelaySeconds: 10
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 4001
+          initialDelaySeconds: 5
+          periodSeconds: 10
+      volumes:
+      - name: config
+        configMap:
+          name: govrix-config

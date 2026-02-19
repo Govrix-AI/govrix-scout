@@ -1,0 +1,38 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/govrix-common",
+    "crates/govrix-server",
+    "crates/govrix-policy",
+    "crates/govrix-identity",
+    "crates/govrix-keygen",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "LicenseRef-Proprietary"
+
+[workspace.dependencies]
+agentmesh-common = { git = "ssh://git@github.com/manaspros/govrix-scout.git", branch = "main" }
+agentmesh-proxy = { git = "ssh://git@github.com/manaspros/govrix-scout.git", branch = "main" }
+agentmesh-store = { git = "ssh://git@github.com/manaspros/govrix-scout.git", branch = "main" }
+govrix-common = { path = "crates/govrix-common" }
+govrix-policy = { path = "crates/govrix-policy" }
+govrix-identity = { path = "crates/govrix-identity" }
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+thiserror = "2"
+anyhow = "1"
+uuid = { version = "1", features = ["v7", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+figment = { version = "0.10", features = ["toml", "env"] }
+clap = { version = "4", features = ["derive", "env"] }
+rust_decimal = { version = "1", features = ["serde-float"] }
+base64 = "0.22"
+rcgen = { version = "0.13", features = ["x509-parser"] }
+axum-server = { version = "0.7", features = ["tls-rustls"] }

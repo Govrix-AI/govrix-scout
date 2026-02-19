@@ -1,0 +1,19 @@
+[package]
+name = "govrix-policy"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+agentmesh-common = { workspace = true }
+agentmesh-proxy = { workspace = true }
+govrix-common = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+regex = "1"
+thiserror = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+rust_decimal = { workspace = true }
