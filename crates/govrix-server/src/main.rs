@@ -16,6 +16,7 @@ use std::sync::{Arc, RwLock};
 use agentmesh_common::config::Config;
 use agentmesh_proxy::{api as scout_api, events, policy::PolicyHook, proxy};
 use govrix_common::license;
+use govrix_identity::{ca::CertificateAuthority, mtls::MtlsConfig};
 use govrix_policy::engine::PolicyEngine;
 use govrix_policy::hook::GovrixPolicyHook;
 use tracing_subscriber::EnvFilter;
@@ -45,6 +46,25 @@ async fn main() -> anyhow::Result<()> {
         policy_enabled = license_info.policy_enabled,
         "license validated"
     );
+
+    // ── Identity / mTLS ─────────────────────────────────────────────────────
+    let mtls_config = if license_info.a2a_identity_enabled {
+        let org_name = license_info.org_id.as_deref().unwrap_or("govrix");
+        match CertificateAuthority::generate(org_name) {
+            Ok(ca) => {
+                tracing::info!(org = org_name, "CA generated, mTLS enabled");
+                MtlsConfig::with_ca(ca)
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "CA generation failed, falling back to mTLS disabled");
+                MtlsConfig::default()
+            }
+        }
+    } else {
+        tracing::info!("mTLS disabled (license tier)");
+        MtlsConfig::default()
+    };
+    let mtls_config = Arc::new(mtls_config);
 
     // ── Scout configuration ─────────────────────────────────────────────────
     let config_path = std::env::var("GOVRIX_CONFIG")
@@ -125,6 +145,7 @@ async fn main() -> anyhow::Result<()> {
         max_agents: license_info.max_agents,
         policy_enabled: license_info.policy_enabled,
         pii_masking_enabled: license_info.pii_masking_enabled,
+        mtls_enabled: mtls_config.is_mtls_enabled(),
         version: env!("CARGO_PKG_VERSION"),
         engine: Arc::clone(&policy_engine),
     });
