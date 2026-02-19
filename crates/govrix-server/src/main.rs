@@ -14,7 +14,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use agentmesh_common::config::Config;
-use agentmesh_proxy::{api, events, policy::PolicyHook, proxy};
+use agentmesh_proxy::{api as scout_api, events, policy::PolicyHook, proxy};
 use govrix_common::license;
 use govrix_policy::engine::PolicyEngine;
 use govrix_policy::hook::GovrixPolicyHook;
@@ -120,8 +120,8 @@ async fn main() -> anyhow::Result<()> {
     let api_metrics = metrics.clone();
     let api_handle = tokio::spawn(async move {
         let result = match pool {
-            Some(p) => api::serve_with_pool(api_addr, p, api_config, api_metrics).await,
-            None => api::serve(api_addr).await,
+            Some(p) => scout_api::serve_with_pool(api_addr, p, api_config, api_metrics).await,
+            None => scout_api::serve(api_addr).await,
         };
         if let Err(e) = result {
             tracing::error!("API server error: {e}");

@@ -5,6 +5,7 @@ edition.workspace = true
 
 [dependencies]
 agentmesh-common = { workspace = true }
+agentmesh-proxy = { workspace = true }
 govrix-common = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

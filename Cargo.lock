@@ -5,7 +5,7 @@ version = 4
 [[package]]
 name = "agentmesh-common"
 version = "0.1.0"
-source = "git+ssh://git@github.com/manaspros/govrix-scout.git?branch=main#bfffa16febb177e24a1804797f51c1d1b13c88bb"
+source = "git+ssh://git@github.com/manaspros/govrix-scout.git?branch=main#d6ce505b30fec86e5616f0ee265d9427cdf82f45"
 dependencies = [
  "anyhow",
  "chrono",
@@ -22,7 +22,7 @@ dependencies = [
 [[package]]
 name = "agentmesh-proxy"
 version = "0.1.0"
-source = "git+ssh://git@github.com/manaspros/govrix-scout.git?branch=main#bfffa16febb177e24a1804797f51c1d1b13c88bb"
+source = "git+ssh://git@github.com/manaspros/govrix-scout.git?branch=main#d6ce505b30fec86e5616f0ee265d9427cdf82f45"
 dependencies = [
  "agentmesh-common",
  "agentmesh-store",
@@ -54,7 +54,7 @@ dependencies = [
 [[package]]
 name = "agentmesh-store"
 version = "0.1.0"
-source = "git+ssh://git@github.com/manaspros/govrix-scout.git?branch=main#bfffa16febb177e24a1804797f51c1d1b13c88bb"
+source = "git+ssh://git@github.com/manaspros/govrix-scout.git?branch=main#d6ce505b30fec86e5616f0ee265d9427cdf82f45"
 dependencies = [
  "agentmesh-common",
  "chrono",
@@ -816,6 +816,7 @@ name = "govrix-policy"
 version = "0.1.0"
 dependencies = [
  "agentmesh-common",
+ "agentmesh-proxy",
  "govrix-common",
  "regex",
  "rust_decimal",
@@ -835,10 +836,13 @@ dependencies = [
  "agentmesh-proxy",
  "agentmesh-store",
  "anyhow",
+ "axum",
  "clap",
  "govrix-common",
  "govrix-identity",
  "govrix-policy",
+ "serde",
+ "serde_json",
  "tokio",
  "tracing",
  "tracing-subscriber",
