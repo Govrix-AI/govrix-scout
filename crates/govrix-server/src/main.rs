@@ -250,6 +250,8 @@ async fn main() -> anyhow::Result<()> {
         policy_enabled: license_info.policy_enabled,
         pii_masking_enabled: license_info.pii_masking_enabled,
         mtls_enabled: mtls_config.is_mtls_enabled(),
+        audit_trail_enabled: pool.is_some(),
+        budget_tracking_enabled: effective_token_limit.is_some() || effective_cost_limit.is_some(),
         version: env!("CARGO_PKG_VERSION"),
         engine: Arc::clone(&policy_engine),
         ca: platform_ca.clone(),
