@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agentmesh
+  namespace: agentmesh
+  labels:
+    app: agentmesh
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agentmesh
+  template:
+    metadata:
+      labels:
+        app: agentmesh
+    spec:
+      containers:
+      - name: agentmesh
+        image: agentmesh:latest
+        ports:
+        - containerPort: 4000
+          name: proxy
+        - containerPort: 4001
+          name: api
+        env:
+        - name: AGENTMESH_LOG
+          value: "agentmesh=info"
+        - name: RUST_LOG
+          value: "agentmesh=info"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 4001
+          initialDelaySeconds: 10
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 4001
+          initialDelaySeconds: 5
+          periodSeconds: 10
