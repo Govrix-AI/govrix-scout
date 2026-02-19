@@ -8,6 +8,8 @@
 //!
 //! Startup: loads Platform config, validates license, initializes Scout proxy.
 
+mod api;
+
 use std::net::SocketAddr;
 use std::sync::Arc;
 
