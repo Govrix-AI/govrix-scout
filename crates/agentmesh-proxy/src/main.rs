@@ -20,10 +20,7 @@ use std::net::SocketAddr;
 use agentmesh_common::config::Config;
 use tracing_subscriber::EnvFilter;
 
-mod api;
-mod events;
-mod policy;
-mod proxy;
+use agentmesh_proxy::{api, events, proxy};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

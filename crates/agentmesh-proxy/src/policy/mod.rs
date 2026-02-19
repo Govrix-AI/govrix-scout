@@ -22,7 +22,7 @@
 //!
 //! # Usage in the interceptor
 //!
-//! ```rust,no_run
+//! ```rust,ignore
 //! use std::sync::Arc;
 //! use agentmesh_proxy::policy::engine::PolicyEngine;
 //!

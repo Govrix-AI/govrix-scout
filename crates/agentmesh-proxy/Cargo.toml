@@ -5,6 +5,10 @@ edition.workspace = true
 license.workspace = true
 description = "AgentMesh proxy — intercepts and observes AI agent traffic"
 
+[lib]
+name = "agentmesh_proxy"
+path = "src/lib.rs"
+
 [[bin]]
 name = "agentmesh"
 path = "src/main.rs"
