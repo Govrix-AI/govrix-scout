@@ -66,7 +66,7 @@ pub async fn list_agents(
     State(state): State<Arc<AppState>>,
     Query(params): Query<ListAgentsParams>,
 ) -> impl IntoResponse {
-    let limit = params.limit.unwrap_or(50).min(200).max(1);
+    let limit = params.limit.unwrap_or(50).clamp(1, 200);
     let offset = params.offset.unwrap_or(0).max(0);
 
     let filter = AgentFilter {
@@ -232,7 +232,7 @@ pub async fn get_agent_events(
     Path(id): Path<String>,
     Query(params): Query<AgentEventsParams>,
 ) -> impl IntoResponse {
-    let limit = params.limit.unwrap_or(100).min(500).max(1);
+    let limit = params.limit.unwrap_or(100).clamp(1, 500);
 
     match agentmesh_store::events::get_events_for_agent(&state.pool, &id, limit, None).await {
         Ok(events) => {
@@ -270,7 +270,7 @@ mod tests {
             limit: Some(9999),
             offset: None,
         };
-        let limit = params.limit.unwrap_or(50).min(200).max(1);
+        let limit = params.limit.unwrap_or(50).clamp(1, 200);
         assert_eq!(limit, 200);
     }
 
@@ -283,7 +283,7 @@ mod tests {
             limit: None,
             offset: None,
         };
-        let limit = params.limit.unwrap_or(50).min(200).max(1);
+        let limit = params.limit.unwrap_or(50).clamp(1, 200);
         let offset = params.offset.unwrap_or(0).max(0);
         assert_eq!(limit, 50);
         assert_eq!(offset, 0);

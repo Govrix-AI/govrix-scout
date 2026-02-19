@@ -394,11 +394,13 @@ mod tests {
 
     #[test]
     fn block_on_global_token_limit() {
-        let mut policy = BudgetPolicy::default();
-        policy.global_limit = Some(BudgetLimit {
-            daily_token_limit: Some(500),
-            daily_cost_limit_usd: None,
-        });
+        let policy = BudgetPolicy {
+            global_limit: Some(BudgetLimit {
+                daily_token_limit: Some(500),
+                daily_cost_limit_usd: None,
+            }),
+            ..Default::default()
+        };
         let mut tracker = BudgetTracker::new(policy);
         tracker.record_usage("agent-1", 300, 0.0);
         tracker.record_usage("agent-2", 150, 0.0); // global total: 450
@@ -409,11 +411,13 @@ mod tests {
 
     #[test]
     fn allow_when_global_limit_not_reached() {
-        let mut policy = BudgetPolicy::default();
-        policy.global_limit = Some(BudgetLimit {
-            daily_token_limit: Some(1_000_000),
-            daily_cost_limit_usd: None,
-        });
+        let policy = BudgetPolicy {
+            global_limit: Some(BudgetLimit {
+                daily_token_limit: Some(1_000_000),
+                daily_cost_limit_usd: None,
+            }),
+            ..Default::default()
+        };
         let tracker = BudgetTracker::new(policy);
         let action = tracker.check_budget("agent-1", 100, 0.0);
         assert_eq!(action, PolicyAction::Allow);

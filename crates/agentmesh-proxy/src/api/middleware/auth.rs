@@ -59,7 +59,7 @@ pub async fn auth_middleware(
 
     // Skip auth for public paths
     let path = req.uri().path();
-    if PUBLIC_PATHS.iter().any(|p| *p == path) {
+    if PUBLIC_PATHS.contains(&path) {
         return next.run(req).await;
     }
 

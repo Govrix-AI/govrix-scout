@@ -64,7 +64,7 @@ pub async fn list_events(
     State(state): State<Arc<AppState>>,
     Query(params): Query<ListEventsParams>,
 ) -> impl IntoResponse {
-    let limit = params.limit.unwrap_or(50).min(500).max(1);
+    let limit = params.limit.unwrap_or(50).clamp(1, 500);
     let offset = params.offset.unwrap_or(0).max(0);
 
     let filter = EventFilter {
@@ -191,7 +191,7 @@ mod tests {
             limit: None,
             offset: None,
         };
-        let limit = params.limit.unwrap_or(50).min(500).max(1);
+        let limit = params.limit.unwrap_or(50).clamp(1, 500);
         let offset = params.offset.unwrap_or(0).max(0);
         assert_eq!(limit, 50);
         assert_eq!(offset, 0);
@@ -209,7 +209,7 @@ mod tests {
             limit: Some(9999),
             offset: Some(100),
         };
-        let limit = params.limit.unwrap_or(50).min(500).max(1);
+        let limit = params.limit.unwrap_or(50).clamp(1, 500);
         let offset = params.offset.unwrap_or(0).max(0);
         assert_eq!(limit, 500);
         assert_eq!(offset, 100);
