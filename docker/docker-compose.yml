@@ -9,20 +9,35 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U govrix -d govrix"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
   govrix:
     build:
       context: ..
       dockerfile: docker/Dockerfile
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     ports:
-      - "8080:8080"
-      - "4001:4001"
+      - "4000:4000"   # Proxy (hot path)
+      - "4001:4001"   # REST API
+      - "4443:4443"   # mTLS proxy
     environment:
       GOVRIX__DATABASE__URL: postgres://govrix:govrix@postgres:5432/govrix
       GOVRIX__PLATFORM__POLICY_ENABLED: "true"
+      GOVRIX_LICENSE_KEY: ""
       RUST_LOG: info
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:4001/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
 
 volumes:
   pgdata:
