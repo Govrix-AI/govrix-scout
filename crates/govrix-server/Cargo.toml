@@ -12,6 +12,8 @@ govrix-common = { workspace = true }
 govrix-policy = { workspace = true }
 govrix-identity = { workspace = true }
 agentmesh-common = { workspace = true }
+agentmesh-proxy = { workspace = true }
+agentmesh-store = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }

@@ -1,0 +1,45 @@
+# Govrix Platform — Default Configuration
+# Override any setting via environment variables: AGENTMESH_<SECTION>_<KEY>
+# Example: AGENTMESH_PROXY_PORT=8080
+
+[proxy]
+port = 4000
+bind = "0.0.0.0"
+fail_open = true
+upstream_timeout_ms = 30000
+max_body_tee_bytes = 1048576
+upstream_openai = "https://api.openai.com"
+upstream_anthropic = "https://api.anthropic.com"
+
+[api]
+port = 4001
+bind = "0.0.0.0"
+cors_enabled = true
+cors_origins = ["http://localhost:3000"]
+
+[database]
+url = "postgres://govrix:govrix@localhost:5432/govrix"
+max_connections = 20
+min_connections = 2
+connect_timeout_secs = 10
+
+[retention]
+events_days = 30
+cost_days = 90
+
+[telemetry]
+log_level = "info"
+prometheus_enabled = true
+prometheus_port = 9090
+
+[dashboard]
+port = 3000
+
+# Platform-specific settings (not in Scout)
+[platform]
+policy_enabled = false
+pii_masking_enabled = false
+a2a_identity_enabled = false
+max_agents = 100
+retention_days = 30
+# license_key = "your-license-key-here"
