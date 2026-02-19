@@ -1,0 +1,77 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/agentmesh-common",
+    "crates/agentmesh-store",
+    "crates/agentmesh-proxy",
+    "crates/agentmesh-cli",
+    "crates/agentmesh-reports",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+authors = ["AgentMesh Contributors"]
+repository = "https://github.com/agentmesh/agentmesh"
+rust-version = "1.75"
+
+[workspace.dependencies]
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# HTTP / networking
+hyper = { version = "1.6", features = ["full"] }
+hyper-util = { version = "0.1", features = ["tokio", "server", "server-auto"] }
+http-body-util = "0.1"
+axum = "0.8"
+tower = { version = "0.5", features = ["util"] }
+tower-http = { version = "0.6", features = ["cors", "trace"] }
+reqwest = { version = "0.12", features = ["json", "stream", "rustls-tls"], default-features = false }
+bytes = "1"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+
+# IDs and time
+uuid = { version = "1", features = ["v7", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+
+# Database
+sqlx = { version = "0.8", features = [
+    "runtime-tokio-rustls",
+    "postgres",
+    "uuid",
+    "chrono",
+    "json",
+] }
+
+# CLI
+clap = { version = "4", features = ["derive", "env"] }
+
+# Hashing (for lineage chain)
+sha2 = "0.10"
+hex = "0.4"
+
+# Error handling
+thiserror = "2"
+anyhow = "1"
+
+# Observability
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Templating
+minijinja = "2"
+
+# Internal crates
+agentmesh-common = { path = "crates/agentmesh-common" }
+agentmesh-store = { path = "crates/agentmesh-store" }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = true
