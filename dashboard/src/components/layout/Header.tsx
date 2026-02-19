@@ -53,7 +53,7 @@ function HealthIndicator() {
 export function Header() {
   const location = useLocation()
   const match = Object.keys(PAGE_TITLES).find(path => location.pathname.startsWith(path))
-  const title = match ? PAGE_TITLES[match] : 'AgentMesh'
+  const title = match ? PAGE_TITLES[match] : 'Scout'
 
   return (
     <header className="h-14 flex items-center justify-between px-6 border-b border-slate-700/60 bg-slate-900/80 backdrop-blur-sm shrink-0">

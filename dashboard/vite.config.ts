@@ -13,17 +13,17 @@ export default defineConfig({
   server: {
     port: 3000,
     proxy: {
-      // Proxy API calls to the AgentMesh management API
+      // Proxy API calls to the Scout API server (default port 8080)
       '/api': {
-        target: 'http://localhost:4001',
+        target: 'http://localhost:8080',
         changeOrigin: true,
       },
       '/health': {
-        target: 'http://localhost:4001',
+        target: 'http://localhost:8080',
         changeOrigin: true,
       },
       '/metrics': {
-        target: 'http://localhost:4001',
+        target: 'http://localhost:8080',
         changeOrigin: true,
       },
     },

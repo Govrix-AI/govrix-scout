@@ -1,7 +1,7 @@
 /**
  * SettingsPage — Shows current proxy config, connection status, and version info.
  *
- * NOTE: Authentication / access control is coming in AgentMesh Enterprise.
+ * NOTE: Authentication / access control is coming in Govrix Platform.
  * The OSS version is designed for local / trusted network use only.
  */
 
@@ -26,7 +26,7 @@ function ConnectionStatus() {
     return (
       <div className="flex items-center gap-2 text-sm text-red-400">
         <XCircle className="w-4 h-4" />
-        API server unreachable — is AgentMesh running on port 4001?
+        API server unreachable — is Scout running on port 8080?
       </div>
     )
   }
@@ -34,7 +34,7 @@ function ConnectionStatus() {
   return (
     <div className="flex items-center gap-2 text-sm text-emerald-400">
       <CheckCircle className="w-4 h-4" />
-      Connected to AgentMesh {data?.version ? `v${data.version}` : ''}
+      Connected to Scout {data?.version ? `v${data.version}` : ''}
     </div>
   )
 }
@@ -73,15 +73,15 @@ export function SettingsPage() {
       <div className="flex items-start gap-3 p-4 bg-slate-800 border border-slate-700/60 rounded-xl">
         <Lock className="w-4 h-4 text-slate-400 mt-0.5 shrink-0" />
         <div className="text-xs text-slate-400">
-          <span className="font-semibold text-slate-200">Authentication is not enabled in AgentMesh OSS.</span>
+          <span className="font-semibold text-slate-200">Authentication is not enabled in Scout OSS.</span>
           {' '}This dashboard is intended for local or trusted network use. SSO, RBAC, and audit logging are available in{' '}
           <a
-            href="https://agentmesh.io/enterprise"
+            href="https://govrix.io/platform"
             target="_blank"
             rel="noopener noreferrer"
             className="text-brand-400 hover:text-brand-300 underline"
           >
-            AgentMesh Enterprise
+            Govrix Platform
           </a>.
         </div>
       </div>
@@ -156,13 +156,13 @@ export function SettingsPage() {
       <div className="bg-brand-600/10 border border-brand-600/30 rounded-xl p-5">
         <div className="flex items-center gap-2 mb-2">
           <Zap className="w-4 h-4 text-brand-400" />
-          <span className="text-sm font-semibold text-brand-400">AgentMesh Enterprise</span>
+          <span className="text-sm font-semibold text-brand-400">Govrix Platform</span>
         </div>
         <p className="text-xs text-slate-400 mb-3">
-          Need policy enforcement, PII masking, compliance templates, SSO, RBAC, A2A identity, or multi-cluster support?
+          Need policy enforcement, PII masking, compliance templates, SSO, RBAC, A2A identity, or multi-cluster support? Upgrade to Govrix Platform.
         </p>
         <a
-          href="https://agentmesh.io/enterprise"
+          href="https://govrix.io/platform"
           target="_blank"
           rel="noopener noreferrer"
           className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold bg-brand-600 text-white rounded-lg hover:bg-brand-500 transition-colors"

@@ -206,7 +206,7 @@ export function AgentsPage() {
                   <EmptyState
                     icon={Bot}
                     title="No agents found"
-                    description="Connect your AI agents by setting AGENTMESH_PROXY_URL"
+                    description="Connect your AI agents by setting SCOUT_PROXY_URL"
                   />
                 </td>
               </tr>

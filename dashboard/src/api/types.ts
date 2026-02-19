@@ -1,5 +1,5 @@
 /**
- * TypeScript types matching the AgentMesh Rust models.
+ * TypeScript types matching the Scout Rust models.
  * These types correspond to the canonical DB schemas in agentmesh-schemas skill.
  */
 

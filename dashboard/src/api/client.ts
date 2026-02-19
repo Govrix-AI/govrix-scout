@@ -1,7 +1,7 @@
 /**
- * AgentMesh API client — typed fetch wrapper pointing to localhost:4001.
+ * Scout API client — typed fetch wrapper pointing to localhost:8080.
  *
- * In development, Vite proxies /api/* and /health to http://localhost:4001.
+ * In development, Vite proxies /api/* and /health to http://localhost:8080.
  * In production (Docker), nginx proxies /api/ to the API container.
  */
 
@@ -21,7 +21,7 @@ import type {
   CostParams,
 } from './types'
 
-// In dev, Vite proxy handles /api -> localhost:4001.
+// In dev, Vite proxy handles /api -> localhost:8080.
 // In prod, set VITE_API_URL or rely on nginx same-origin proxy.
 const API_BASE = import.meta.env.VITE_API_URL ?? ''
 
