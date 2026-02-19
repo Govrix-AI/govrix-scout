@@ -10,6 +10,7 @@
 //! - `config get`   — show current config
 //! - `config set`   — update a config value
 
+mod client;
 mod http;
 mod output;
 

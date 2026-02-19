@@ -50,6 +50,7 @@ sqlx = { version = "0.8", features = [
 
 # CLI
 clap = { version = "4", features = ["derive", "env"] }
+comfy-table = "7"
 
 # Hashing (for lineage chain)
 sha2 = "0.10"

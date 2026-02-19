@@ -9,6 +9,12 @@
 //! - `cost`        — cost breakdown by agent, model, and day
 //! - `pii`         — PII detection findings (type + location, no values)
 
+pub mod cost;
+pub mod usage;
+
+pub use cost::CostBreakdown;
+pub use usage::UsageSummary;
+
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
