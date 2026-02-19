@@ -2,6 +2,9 @@
 //!
 //! Route map (all on the management API port 4001):
 //!
+//! Dashboard
+//!   GET  /dashboard               ← minimal HTML dashboard (no JS build step)
+//!
 //! Health
 //!   GET  /health
 //!   GET  /ready
@@ -38,7 +41,7 @@ use std::sync::atomic::Ordering;
 use axum::{
     extract::State,
     middleware,
-    response::IntoResponse,
+    response::{Html, IntoResponse},
     routing::{get, post},
     Json, Router,
 };
@@ -57,6 +60,8 @@ use crate::api::{
 /// Stateless handlers (reports/types, health, metrics) do not require state.
 pub fn create_router(state: Arc<AppState>) -> Router {
     Router::new()
+        // ── Dashboard ──────────────────────────────────────────────────────
+        .route("/dashboard", get(dashboard))
         // ── Health ─────────────────────────────────────────────────────────
         .route("/health", get(handlers::health::health))
         .route("/ready", get(handlers::health::ready))
@@ -121,6 +126,16 @@ pub fn create_router_with_auth(state: Arc<AppState>) -> Router {
     }
 }
 
+// ── Dashboard handler ──────────────────────────────────────────────────────────
+
+/// Serve the minimal HTML dashboard.
+///
+/// GET /dashboard — returns the self-contained single-page dashboard that polls
+/// the Scout REST API every 5 seconds. No build step or Node.js required.
+async fn dashboard() -> Html<&'static str> {
+    Html(include_str!("../../static/dashboard.html"))
+}
+
 // ── Stub handlers ─────────────────────────────────────────────────────────────
 
 /// Prometheus metrics endpoint — reads real atomic counters from shared state.
@@ -161,6 +176,7 @@ pub fn build_router() -> Router {
     // Return an empty router with just health — full router requires AppState.
     // This is only used when serve() is called without a pool (legacy path).
     Router::new()
+        .route("/dashboard", get(dashboard))
         .route("/health", get(health_no_state))
         .route("/ready", get(ready_no_state))
         .route("/metrics", get(metrics_stub_handler))
@@ -267,4 +283,14 @@ async fn stub_config() -> impl IntoResponse {
             "retention": { "events_days": 7 },
         }
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn dashboard_html_contains_agentmesh() {
+        let html = include_str!("../../static/dashboard.html");
+        assert!(html.contains("AgentMesh"));
+        assert!(html.contains("/api/v1/agents"));
+    }
 }

@@ -1,6 +1,7 @@
 //! Management API server (Axum, port 4001).
 //!
 //! Serves non-hot-path endpoints:
+//! - Web dashboard at /dashboard (self-contained HTML, no build step required)
 //! - Health checks (/health, /ready)
 //! - Prometheus metrics (/metrics)
 //! - REST API for events, agents, costs, reports, config
