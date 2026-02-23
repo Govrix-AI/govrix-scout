@@ -14,9 +14,9 @@ edition = "2021"
 license = "LicenseRef-Proprietary"
 
 [workspace.dependencies]
-agentmesh-common = { git = "ssh://git@github.com/manaspros/govrix-scout.git", branch = "main" }
-agentmesh-proxy = { git = "ssh://git@github.com/manaspros/govrix-scout.git", branch = "main" }
-agentmesh-store = { git = "ssh://git@github.com/manaspros/govrix-scout.git", branch = "main" }
+agentmesh-common = { path = "govrix-scout/crates/agentmesh-common" }
+agentmesh-proxy = { path = "govrix-scout/crates/agentmesh-proxy" }
+agentmesh-store = { path = "govrix-scout/crates/agentmesh-store" }
 govrix-common = { path = "crates/govrix-common" }
 govrix-policy = { path = "crates/govrix-policy" }
 govrix-identity = { path = "crates/govrix-identity" }

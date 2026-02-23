@@ -1,5 +1,5 @@
 use figment::{
-    providers::{Format, Serialized, Toml},
+    providers::{Env, Format, Serialized, Toml},
     Figment,
 };
 use serde::{Deserialize, Serialize};
@@ -78,6 +78,7 @@ impl PlatformConfig {
     pub fn load(path: &str) -> Self {
         Figment::from(Serialized::defaults(PlatformConfig::default()))
             .merge(Toml::file(path))
+            .merge(Env::prefixed("GOVRIX__").split("__"))
             .extract()
             .unwrap_or_default()
     }

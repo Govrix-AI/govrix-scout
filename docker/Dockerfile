@@ -27,5 +27,5 @@ COPY --from=builder /app/target/release/govrix /usr/local/bin/govrix
 COPY --from=builder /app/config/ /etc/govrix/
 
 ENV GOVRIX_CONFIG=/etc/govrix/govrix.default.toml
-EXPOSE 4000 4001
+EXPOSE 4000 4001 4443
 CMD ["govrix"]
