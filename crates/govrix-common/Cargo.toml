@@ -1,5 +1,5 @@
 [package]
-name = "govrix-scout-common"
+name = "govrix-common"
 version.workspace = true
 edition.workspace = true
 
