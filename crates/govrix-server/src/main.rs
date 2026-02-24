@@ -78,10 +78,10 @@ async fn mtls_forward(
     }
 }
 
-use agentmesh_common::config::Config;
-use agentmesh_proxy::{api as scout_api, events, policy::PolicyHook, proxy};
-use govrix_common::config::PlatformConfig;
-use govrix_common::license::{self, LicenseTier};
+use govrix_scout_common::config::Config;
+use govrix_scout_proxy::{api as scout_api, events, policy::PolicyHook, proxy};
+use govrix_scout_common::config::PlatformConfig;
+use govrix_scout_common::license::{self, LicenseTier};
 use govrix_identity::{ca::CertificateAuthority, mtls::MtlsConfig};
 use govrix_policy::budget::{BudgetLimit, BudgetTracker};
 use govrix_policy::engine::PolicyEngine;
@@ -91,12 +91,11 @@ use tracing_subscriber::EnvFilter;
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // ── Logging ───────────────────────────────────────────────────────────────
-    // Priority: RUST_LOG (fine-grained) > GOVRIX_LOG_LEVEL > AGENTMESH_LOG_LEVEL > "info"
+    // Priority: RUST_LOG (fine-grained) > GOVRIX_LOG_LEVEL > Govrix_LOG_LEVEL > "info"
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::try_from_env("RUST_LOG")
                 .or_else(|_| EnvFilter::try_from_env("GOVRIX_LOG_LEVEL"))
-                .or_else(|_| EnvFilter::try_from_env("AGENTMESH_LOG_LEVEL"))
                 .unwrap_or_else(|_| EnvFilter::new("info")),
         )
         .init();
@@ -137,7 +136,7 @@ async fn main() -> anyhow::Result<()> {
     let mtls_config = Arc::new(mtls_config);
 
     // ── Tenant registry ──────────────────────────────────────────────────────
-    let tenant_registry = Arc::new(govrix_common::tenant_registry::TenantRegistry::new());
+    let tenant_registry = Arc::new(govrix_scout_common::tenant_registry::TenantRegistry::new());
     tracing::info!(
         tenants = tenant_registry.count(),
         "tenant registry initialized"
@@ -145,8 +144,7 @@ async fn main() -> anyhow::Result<()> {
 
     // ── Scout configuration ─────────────────────────────────────────────────
     let config_path = std::env::var("GOVRIX_CONFIG")
-        .or_else(|_| std::env::var("AGENTMESH_CONFIG"))
-        .unwrap_or_else(|_| "config/agentmesh.default.toml".to_string());
+        .unwrap_or_else(|_| "config/govrix.default.toml".to_string());
     let config = Config::load_or_default(&config_path);
 
     tracing::info!(
@@ -161,7 +159,7 @@ async fn main() -> anyhow::Result<()> {
     let platform_cfg = PlatformConfig::load(&govrix_config_path);
 
     // ── Database pool ───────────────────────────────────────────────────────
-    let pool = match agentmesh_store::connect(&config.database).await {
+    let pool = match govrix_scout_store::connect(&config.database).await {
         Ok(p) => {
             tracing::info!("PostgreSQL pool established");
             Some(p)

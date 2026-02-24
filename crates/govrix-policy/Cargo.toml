@@ -4,9 +4,9 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-agentmesh-common = { workspace = true }
-agentmesh-proxy = { workspace = true }
-govrix-common = { workspace = true }
+govrix-scout-common = { workspace = true }
+govrix-scout-proxy = { workspace = true }
+govrix-scout-common = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_yaml = { workspace = true }

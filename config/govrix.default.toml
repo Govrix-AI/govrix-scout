@@ -1,6 +1,6 @@
 # Govrix Platform — Default Configuration
-# Override any setting via environment variables: AGENTMESH_<SECTION>_<KEY>
-# Example: AGENTMESH_PROXY_PORT=8080
+# Override any setting via environment variables: GOVRIX_<SECTION>_<KEY>
+# Example: govrix_scout_proxy_PORT=8080
 
 [proxy]
 port = 4000

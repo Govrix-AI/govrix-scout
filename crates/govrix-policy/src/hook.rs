@@ -10,8 +10,8 @@
 
 use std::sync::{Arc, RwLock};
 
-use agentmesh_common::models::event::AgentEvent;
-use agentmesh_proxy::policy::PolicyHook;
+use govrix_scout_common::models::event::AgentEvent;
+use govrix_scout_proxy::policy::PolicyHook;
 
 use crate::budget::{BudgetResult, BudgetTracker};
 use crate::engine::{PolicyDecision, PolicyEngine};
@@ -135,7 +135,7 @@ mod tests {
     use super::*;
     use crate::budget::BudgetLimit;
     use crate::engine::{Action, Condition, Operator, PolicyRule};
-    use agentmesh_common::models::event::{EventDirection, Provider};
+    use govrix_scout_common::models::event::{EventDirection, Provider};
     use uuid::Uuid;
 
     fn make_event() -> AgentEvent {
