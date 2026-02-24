@@ -141,7 +141,7 @@ impl PolicyEngine {
     ///
     /// Returns the decision of the first matching, enabled rule. Falls through
     /// to `Allow` when no rule matches.
-    pub fn evaluate(&self, event: &agentmesh_common::models::AgentEvent) -> PolicyDecision {
+    pub fn evaluate(&self, event: &govrix_scout_common::models::AgentEvent) -> PolicyDecision {
         for rule in &self.rules {
             if !rule.enabled {
                 continue;
@@ -163,7 +163,7 @@ impl PolicyEngine {
 
     fn matches_all_conditions(
         &self,
-        event: &agentmesh_common::models::AgentEvent,
+        event: &govrix_scout_common::models::AgentEvent,
         conditions: &[Condition],
     ) -> bool {
         conditions.iter().all(|c| self.matches_condition(event, c))
@@ -171,7 +171,7 @@ impl PolicyEngine {
 
     fn matches_condition(
         &self,
-        event: &agentmesh_common::models::AgentEvent,
+        event: &govrix_scout_common::models::AgentEvent,
         condition: &Condition,
     ) -> bool {
         let field_value = self.get_field_value(event, &condition.field);
@@ -201,7 +201,7 @@ impl PolicyEngine {
     ///
     /// Unknown field names return an empty string so that conditions on them
     /// never accidentally match.
-    fn get_field_value(&self, event: &agentmesh_common::models::AgentEvent, field: &str) -> String {
+    fn get_field_value(&self, event: &govrix_scout_common::models::AgentEvent, field: &str) -> String {
         match field {
             "model" => event.model.clone().unwrap_or_default(),
             "agent_id" => event.agent_id.clone(),
@@ -226,11 +226,11 @@ impl PolicyEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use agentmesh_common::models::event::{EventDirection, Provider};
+    use govrix_scout_common::models::event::{EventDirection, Provider};
     use uuid::Uuid;
 
-    fn make_event() -> agentmesh_common::models::AgentEvent {
-        agentmesh_common::models::AgentEvent::new(
+    fn make_event() -> govrix_scout_common::models::AgentEvent {
+        govrix_scout_common::models::AgentEvent::new(
             "agent-001",
             Uuid::now_v7(),
             EventDirection::Outbound,

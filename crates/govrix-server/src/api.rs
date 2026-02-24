@@ -13,8 +13,8 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use govrix_common::license::LicenseTier;
-use govrix_common::tenant_registry::TenantRegistry;
+use govrix_scout_common::license::LicenseTier;
+use govrix_scout_common::tenant_registry::TenantRegistry;
 use govrix_policy::engine::PolicyEngine;
 use serde::{Deserialize, Serialize};
 
@@ -312,11 +312,11 @@ async fn demo_session_recording() -> Json<serde_json::Value> {
 
 /// Bearer token auth middleware for platform routes.
 ///
-/// If `AGENTMESH_API_KEY` is set, all requests must include
+/// If `GOVRIX_API_KEY` is set, all requests must include
 /// `Authorization: Bearer <token>`.  If the variable is unset (dev mode),
 /// all requests are allowed through.
 async fn require_api_key(req: Request<Body>, next: Next) -> Response {
-    let expected = std::env::var("AGENTMESH_API_KEY").unwrap_or_default();
+    let expected = std::env::var("GOVRIX_API_KEY").unwrap_or_default();
     if expected.is_empty() {
         // No key configured — open access (dev mode).
         return next.run(req).await;
@@ -357,7 +357,7 @@ async fn require_api_key(req: Request<Body>, next: Next) -> Response {
             StatusCode::UNAUTHORIZED,
             Json(serde_json::json!({
                 "error": "missing Authorization header",
-                "hint": "use Authorization: Bearer <AGENTMESH_API_KEY>",
+                "hint": "use Authorization: Bearer <GOVRIX_API_KEY>",
             })),
         )
             .into_response(),
@@ -369,7 +369,7 @@ async fn health_check() -> (StatusCode, &'static str) {
 }
 
 pub fn platform_router(state: Arc<PlatformState>) -> Router {
-    // Protected routes require a valid API key when AGENTMESH_API_KEY is set.
+    // Protected routes require a valid API key when GOVRIX_API_KEY is set.
     let protected = Router::new()
         .route("/api/v1/platform/health", get(platform_health))
         .route("/api/v1/platform/license", get(license_info))
@@ -391,13 +391,13 @@ pub fn platform_router(state: Arc<PlatformState>) -> Router {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use govrix_common::tenant_registry::TenantRegistry;
+    use govrix_scout_common::tenant_registry::TenantRegistry;
     use govrix_policy::engine::PolicyEngine;
     use std::sync::{Arc, RwLock};
 
     fn make_state() -> Arc<PlatformState> {
         Arc::new(PlatformState {
-            license_tier: govrix_common::license::LicenseTier::Enterprise,
+            license_tier: govrix_scout_common::license::LicenseTier::Enterprise,
             max_agents: 10,
             policy_enabled: true,
             pii_masking_enabled: false,

@@ -34,7 +34,7 @@ cargo run -p govrix-keygen -- --tier enterprise --org "Acme Corp" --max-agents 1
 ### Crate Overview
 | Crate | Purpose |
 |-------|---------|
-| govrix-common | Config, license types, tenant registry |
+| govrix-scout-common | Config, license types, tenant registry |
 | govrix-policy | Policy engine, PII masking, budget tracking |
 | govrix-identity | mTLS CA and cert issuance |
 | govrix-server | Main binary: proxy + management API |

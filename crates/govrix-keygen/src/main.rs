@@ -63,8 +63,8 @@ mod tests {
     #[test]
     fn encode_decode_roundtrip() {
         let key = generate_key("growth", "acme-corp", 100, Some("2099-01-01T00:00:00Z"));
-        let info = govrix_common::license::validate_license(Some(&key));
-        assert_eq!(info.tier, govrix_common::license::LicenseTier::Growth);
+        let info = govrix_scout_common::license::validate_license(Some(&key));
+        assert_eq!(info.tier, govrix_scout_common::license::LicenseTier::Growth);
         assert_eq!(info.max_agents, 100);
         assert_eq!(info.org_id.as_deref(), Some("acme-corp"));
     }
@@ -73,7 +73,7 @@ mod tests {
     fn community_key_falls_back_to_community_tier() {
         // community is not a recognised tier in validate_license — it falls back gracefully
         let key = generate_key("community", "test", 0, None);
-        let info = govrix_common::license::validate_license(Some(&key));
-        assert_eq!(info.tier, govrix_common::license::LicenseTier::Community);
+        let info = govrix_scout_common::license::validate_license(Some(&key));
+        assert_eq!(info.tier, govrix_scout_common::license::LicenseTier::Community);
     }
 }

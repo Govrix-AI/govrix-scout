@@ -26,7 +26,7 @@ export GOVRIX_LICENSE_KEY="<base64-encoded-license>"
 export GOVRIX_CONFIG="config/govrix.toml"
 
 # Optional: PostgreSQL connection string
-export AGENTMESH_DATABASE_URL="postgres://govrix:govrix@localhost:5432/govrix"
+export GOVRIX_DATABASE_URL="postgres://govrix:govrix@localhost:5432/govrix"
 
 # Build and run
 cargo run --release -p govrix-server
@@ -89,13 +89,13 @@ All Scout endpoints are available. Platform adds:
 
 ### Authentication
 
-All `/api/v1/*` endpoints require a Bearer token when `AGENTMESH_API_KEY` is set:
+All `/api/v1/*` endpoints require a Bearer token when `GOVRIX_API_KEY` is set:
 
 ```bash
-curl -H "Authorization: Bearer $AGENTMESH_API_KEY" http://localhost:4001/api/v1/platform/health
+curl -H "Authorization: Bearer $GOVRIX_API_KEY" http://localhost:4001/api/v1/platform/health
 ```
 
-If `AGENTMESH_API_KEY` is unset, all requests are allowed (dev mode). The `/health` endpoint is always unauthenticated.
+If `GOVRIX_API_KEY` is unset, all requests are allowed (dev mode). The `/health` endpoint is always unauthenticated.
 
 ### Example Policy File
 
@@ -106,7 +106,7 @@ See `config/policies.example.yaml` for a fully-annotated example with all suppor
 Five crates:
 
 ```
-govrix-common   — config loading, license validation, tenant types
+govrix-scout-common   — config loading, license validation, tenant types
 govrix-policy   — YAML policy engine, PII masking, budget tracker, Scout hook bridge
 govrix-identity — CA generation (rcgen), per-agent cert issuance, mTLS config
 govrix-server   — startup orchestration, REST API, Scout proxy integration

@@ -1,10 +1,10 @@
 [package]
-name = "govrix-common"
+name = "govrix-scout-common"
 version.workspace = true
 edition.workspace = true
 
 [dependencies]
-agentmesh-common = { workspace = true }
+govrix-scout-common = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
 uuid = { workspace = true }

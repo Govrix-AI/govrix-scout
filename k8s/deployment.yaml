@@ -35,16 +35,16 @@ spec:
               key: GOVRIX_LICENSE_KEY
         - name: GOVRIX_CONFIG
           value: "/etc/govrix/govrix.toml"
-        - name: AGENTMESH_DATABASE_URL
+        - name: GOVRIX_DATABASE_URL
           valueFrom:
             secretKeyRef:
               name: govrix-secrets
-              key: AGENTMESH_DATABASE_URL
-        - name: AGENTMESH_API_KEY
+              key: GOVRIX_DATABASE_URL
+        - name: GOVRIX_API_KEY
           valueFrom:
             secretKeyRef:
               name: govrix-secrets
-              key: AGENTMESH_API_KEY
+              key: GOVRIX_API_KEY
               optional: true
         volumeMounts:
         - name: config
