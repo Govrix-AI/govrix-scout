@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-govrix-scout-common = { workspace = true }
+govrix-common = { workspace = true }
 govrix-scout-proxy = { workspace = true }
 govrix-scout-common = { workspace = true }
 serde = { workspace = true }

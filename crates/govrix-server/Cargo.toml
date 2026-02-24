@@ -8,7 +8,7 @@ name = "govrix"
 path = "src/main.rs"
 
 [dependencies]
-govrix-scout-common = { workspace = true }
+govrix-common = { workspace = true }
 govrix-policy = { workspace = true }
 govrix-identity = { workspace = true }
 govrix-scout-common = { workspace = true }

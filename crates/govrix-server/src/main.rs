@@ -80,8 +80,8 @@ async fn mtls_forward(
 
 use govrix_scout_common::config::Config;
 use govrix_scout_proxy::{api as scout_api, events, policy::PolicyHook, proxy};
-use govrix_scout_common::config::PlatformConfig;
-use govrix_scout_common::license::{self, LicenseTier};
+use govrix_common::config::PlatformConfig;
+use govrix_common::license::{self, LicenseTier};
 use govrix_identity::{ca::CertificateAuthority, mtls::MtlsConfig};
 use govrix_policy::budget::{BudgetLimit, BudgetTracker};
 use govrix_policy::engine::PolicyEngine;
@@ -136,7 +136,7 @@ async fn main() -> anyhow::Result<()> {
     let mtls_config = Arc::new(mtls_config);
 
     // ── Tenant registry ──────────────────────────────────────────────────────
-    let tenant_registry = Arc::new(govrix_scout_common::tenant_registry::TenantRegistry::new());
+    let tenant_registry = Arc::new(govrix_common::tenant_registry::TenantRegistry::new());
     tracing::info!(
         tenants = tenant_registry.count(),
         "tenant registry initialized"

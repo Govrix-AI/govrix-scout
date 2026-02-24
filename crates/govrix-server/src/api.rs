@@ -13,8 +13,8 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use govrix_scout_common::license::LicenseTier;
-use govrix_scout_common::tenant_registry::TenantRegistry;
+use govrix_common::license::LicenseTier;
+use govrix_common::tenant_registry::TenantRegistry;
 use govrix_policy::engine::PolicyEngine;
 use serde::{Deserialize, Serialize};
 
@@ -391,13 +391,13 @@ pub fn platform_router(state: Arc<PlatformState>) -> Router {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use govrix_scout_common::tenant_registry::TenantRegistry;
+    use govrix_common::tenant_registry::TenantRegistry;
     use govrix_policy::engine::PolicyEngine;
     use std::sync::{Arc, RwLock};
 
     fn make_state() -> Arc<PlatformState> {
         Arc::new(PlatformState {
-            license_tier: govrix_scout_common::license::LicenseTier::Enterprise,
+            license_tier: govrix_common::license::LicenseTier::Enterprise,
             max_agents: 10,
             policy_enabled: true,
             pii_masking_enabled: false,
