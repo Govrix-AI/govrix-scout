@@ -1,0 +1,57 @@
+# Govrix Platform — Default Configuration
+# Override any setting via environment variables: GOVRIX_<SECTION>_<KEY>
+# Example: govrix_scout_proxy_PORT=8080
+
+[proxy]
+port = 4000
+bind = "0.0.0.0"
+fail_open = true
+upstream_timeout_ms = 30000
+max_body_tee_bytes = 1048576
+upstream_openai = "https://api.openai.com"
+upstream_anthropic = "https://api.anthropic.com"
+
+[api]
+port = 4001
+bind = "0.0.0.0"
+cors_enabled = true
+cors_origins = ["http://localhost:3000"]
+
+[database]
+url = "postgres://govrix:govrix@localhost:5432/govrix"
+max_connections = 20
+min_connections = 2
+connect_timeout_secs = 10
+
+[retention]
+events_days = 30
+cost_days = 90
+
+[telemetry]
+log_level = "info"
+prometheus_enabled = true
+prometheus_port = 9090
+
+[dashboard]
+port = 3000
+
+# Platform-specific settings (not in Scout)
+[platform]
+policy_enabled = false
+pii_masking_enabled = false
+a2a_identity_enabled = false
+max_agents = 100
+retention_days = 30
+# license_key = "your-license-key-here"
+# Global budget limits applied across all agents (cumulative, not per-request).
+# Omit or set to null for unlimited.
+# global_token_limit = 10_000_000   # e.g. 10M tokens total
+# global_cost_limit_usd = 500.0     # e.g. $500 USD total
+# Port for the mTLS proxy listener (Enterprise tier, a2a_identity_enabled = true).
+mtls_proxy_port = 4443
+
+# Per-agent token and cost limits (optional)
+# [platform.agent_token_limits]
+# "agent-prod" = 1_000_000
+# [platform.agent_cost_limits]
+# "agent-prod" = 10.0

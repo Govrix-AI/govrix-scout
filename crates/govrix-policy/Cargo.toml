@@ -1,0 +1,21 @@
+[package]
+name = "govrix-policy"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+govrix-common = { workspace = true }
+govrix-scout-proxy = { workspace = true }
+govrix-scout-common = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+regex = "1"
+thiserror = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+sha2 = "0.10"
+
+[dev-dependencies]
+rust_decimal = { workspace = true }
