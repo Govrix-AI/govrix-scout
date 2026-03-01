@@ -93,9 +93,11 @@ async fn main() -> anyhow::Result<()> {
         .expect("invalid API bind address");
 
     // ── Proxy server ──────────────────────────────────────────────────────────
-    // Pass the event sender and metrics into the proxy for fire-and-forget event logging
+    // Pass the event sender and metrics into the proxy for fire-and-forget event logging.
+    // Also pass a clone of the DB pool so the proxy can enforce the kill switch.
     let proxy_event_sender = event_sender.clone();
     let proxy_metrics = metrics.clone();
+    let proxy_pool = pool.clone(); // None when DB is unavailable — proxy runs fail-open
     let upstream_urls = proxy::UpstreamUrls {
         openai: config.proxy.upstream_openai.clone(),
         anthropic: config.proxy.upstream_anthropic.clone(),
@@ -107,12 +109,13 @@ async fn main() -> anyhow::Result<()> {
         "upstream URLs configured"
     );
     let proxy_handle = tokio::spawn(async move {
-        if let Err(e) = proxy::serve_full(
+        if let Err(e) = proxy::serve_full_with_pool(
             proxy_addr,
             proxy_event_sender,
             proxy_metrics,
             std::sync::Arc::new(govrix_scout_proxy::policy::NoOpPolicy),
             upstream_urls,
+            proxy_pool,
         )
         .await
         {

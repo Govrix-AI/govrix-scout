@@ -71,6 +71,35 @@ pub async fn proxy_handler(
         request_time: chrono::Utc::now(),
     });
 
+    // ── Kill switch: reject blocked agents before forwarding ──────────────────
+    // Check the agent's status in the registry. If the agent has been retired
+    // (status == 'blocked'), return 403 immediately without hitting upstream.
+    // This check is skipped when no DB pool is available (fail-open design).
+    if let Some(ref pool) = state.db_pool {
+        match govrix_scout_store::get_agent(pool, &agent_id).await {
+            Ok(Some(agent_json)) => {
+                if interceptor::agent_json_is_blocked(&agent_json) {
+                    tracing::warn!(
+                        agent = %agent_id,
+                        "kill switch: blocked agent attempted request — returning 403"
+                    );
+                    return Ok(interceptor::build_agent_blocked_response());
+                }
+            }
+            Ok(None) => {
+                // Agent not in registry — proceed (observability-only for unknown agents).
+            }
+            Err(e) => {
+                // DB error — fail-open: log and proceed rather than blocking traffic.
+                tracing::warn!(
+                    agent = %agent_id,
+                    error = %e,
+                    "kill switch: DB error checking agent status — proceeding (fail-open)"
+                );
+            }
+        }
+    }
+
     // ── Fire-and-forget request event ─────────────────────────────────────────
     {
         let ctx_clone = Arc::clone(&ctx);
