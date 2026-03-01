@@ -108,6 +108,30 @@ Govrix Scout is a **transparent proxy** that sits between your AI agents and the
 
 ## Quick Start
 
+### Install (no Rust or Node.js needed — Docker only)
+
+**Linux / macOS:**
+```bash
+curl -sSL https://raw.githubusercontent.com/manaspros/govrix-scout/main/install.sh | bash
+```
+
+**Windows (PowerShell):**
+```powershell
+iwr -useb https://raw.githubusercontent.com/manaspros/govrix-scout/main/install.ps1 | iex
+```
+
+Points all agent traffic through Govrix on `localhost:4000`. Dashboard at `http://localhost:3000`.
+
+### Developer Setup
+
+```bash
+# Linux / macOS
+curl -sSL https://raw.githubusercontent.com/manaspros/govrix-scout/main/install.sh | bash -s -- --dev
+
+# Windows (PowerShell)
+.\install.ps1 -Dev
+```
+
 ### Prerequisites
 
 - Docker & Docker Compose v2
