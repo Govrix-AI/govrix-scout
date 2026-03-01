@@ -5,6 +5,16 @@
 //! an event completes.
 //!
 //! Fail-open: if budget data is unavailable or stale, `Allow` is returned.
+//!
+//! ## Persistence
+//!
+//! In-memory counters are the source of truth for enforcement decisions (fast,
+//! no DB latency).  On proxy startup, call `BudgetTracker::load_from_db()` to
+//! pre-populate today's counters from the `budget_daily` table so counters
+//! survive restarts.
+//!
+//! After each call to `record_usage`, fire-and-forget DB persistence is triggered
+//! via `record_usage_with_db()`, which spawns a non-blocking `tokio::spawn` task.
 
 #![allow(dead_code)]
 
@@ -162,9 +172,12 @@ impl BudgetTracker {
         PolicyAction::Allow
     }
 
-    /// Record actual usage after an event completes.
+    /// Record actual usage after an event completes (in-memory only).
     ///
     /// Resets daily counters if the UTC date has changed since the last record.
+    ///
+    /// For persistence use [`record_usage_with_db`] instead, which calls this
+    /// method and then spawns a fire-and-forget DB write.
     pub fn record_usage(&mut self, agent_id: &str, tokens: u64, cost_usd: f64) {
         self.maybe_reset_daily();
         let usage = self.daily_usage.entry(agent_id.to_string()).or_default();
@@ -182,6 +195,16 @@ impl BudgetTracker {
         self.daily_usage.keys().cloned().collect()
     }
 
+    /// Get a mutable reference to the `DailyUsage` entry for `agent_id`,
+    /// creating a zero entry if one does not yet exist.
+    ///
+    /// Used by `PolicyEngine::load_budget_from_db` to apply persisted DB rows
+    /// to the in-memory tracker without going through `record_usage` (which
+    /// would also trigger `maybe_reset_daily`).
+    pub fn daily_usage_entry(&mut self, agent_id: &str) -> &mut DailyUsage {
+        self.daily_usage.entry(agent_id.to_string()).or_default()
+    }
+
     /// Reset daily counters if the UTC date has changed.
     fn maybe_reset_daily(&mut self) {
         let today = Utc::now().date_naive();
@@ -190,6 +213,53 @@ impl BudgetTracker {
             self.last_reset = today;
             tracing::info!("budget tracker: daily usage reset for {}", today);
         }
+    }
+}
+
+// ── Fire-and-forget DB persistence ───────────────────────────────────────────
+
+/// Record usage in-memory AND persist the delta to the `budget_daily` table.
+///
+/// The DB write is a non-blocking `tokio::spawn` task — it NEVER blocks the
+/// hot path.  In-memory counters are updated synchronously before the DB task
+/// is spawned, so the enforcement read immediately reflects the new usage.
+///
+/// If the pool is `None` (proxy started without a database), only the in-memory
+/// update is performed (fail-open, same behaviour as before this feature).
+///
+/// # Arguments
+/// - `tracker` — mutable reference to the in-memory tracker (behind a Mutex
+///   at the call site)
+/// - `pool` — optional database pool clone; cloned cheaply via `Arc`
+/// - `agent_id` — agent identifier
+/// - `tokens` — actual tokens used in this event
+/// - `cost_usd` — actual cost in USD for this event
+pub fn record_usage_with_db(
+    tracker: &mut BudgetTracker,
+    pool: Option<govrix_scout_store::StorePool>,
+    agent_id: &str,
+    tokens: u64,
+    cost_usd: f64,
+) {
+    // 1. Update in-memory counter synchronously (fast path — no await).
+    tracker.record_usage(agent_id, tokens, cost_usd);
+
+    // 2. Fire-and-forget: persist the delta to DB.
+    if let Some(p) = pool {
+        let aid = agent_id.to_string();
+        // Cast tokens to i64: budget_daily uses BIGINT; saturate at i64::MAX.
+        let tokens_i64 = tokens.min(i64::MAX as u64) as i64;
+        tokio::spawn(async move {
+            if let Err(e) =
+                govrix_scout_store::upsert_budget_usage(&p, &aid, tokens_i64, cost_usd).await
+            {
+                tracing::warn!(
+                    error = %e,
+                    agent_id = %aid,
+                    "budget: failed to persist usage to DB (fail-open)"
+                );
+            }
+        });
     }
 }
 
@@ -432,5 +502,69 @@ mod tests {
         tracker.record_usage("agent-1", 1, 0.0); // saturating_add → no overflow
         let usage = tracker.current_usage("agent-1");
         assert_eq!(usage.tokens, u64::MAX);
+    }
+
+    // ── record_usage_with_db (no-pool path) ───────────────────────────────────
+
+    #[test]
+    fn record_usage_with_db_no_pool_updates_memory() {
+        // Without a pool, the in-memory counter must still be updated.
+        let mut tracker = BudgetTracker::unlimited();
+        record_usage_with_db(&mut tracker, None, "agent-1", 500, 1.25);
+        let usage = tracker.current_usage("agent-1");
+        assert_eq!(usage.tokens, 500);
+        assert!((usage.cost_usd - 1.25).abs() < 1e-9);
+    }
+
+    #[test]
+    fn record_usage_with_db_accumulates_without_pool() {
+        let mut tracker = BudgetTracker::unlimited();
+        record_usage_with_db(&mut tracker, None, "agent-1", 100, 0.5);
+        record_usage_with_db(&mut tracker, None, "agent-1", 200, 1.0);
+        let usage = tracker.current_usage("agent-1");
+        assert_eq!(usage.tokens, 300);
+        assert!((usage.cost_usd - 1.5).abs() < 1e-9);
+    }
+
+    // ── token cast safety ─────────────────────────────────────────────────────
+
+    #[test]
+    fn token_cast_saturates_at_i64_max() {
+        // Verify the u64→i64 cast logic used in record_usage_with_db
+        let tokens: u64 = u64::MAX;
+        let tokens_i64 = tokens.min(i64::MAX as u64) as i64;
+        assert_eq!(tokens_i64, i64::MAX);
+    }
+
+    #[test]
+    fn token_cast_passes_through_normal_values() {
+        let tokens: u64 = 42_000;
+        let tokens_i64 = tokens.min(i64::MAX as u64) as i64;
+        assert_eq!(tokens_i64, 42_000i64);
+    }
+
+    // ── load_from_db (sync simulation) ───────────────────────────────────────
+
+    /// Verify that daily_usage_entry populates values that are visible via
+    /// current_usage — this mirrors what PolicyEngine::load_budget_from_db does.
+    #[test]
+    fn daily_usage_entry_sets_values_visible_via_current_usage() {
+        let mut tracker = BudgetTracker::unlimited();
+
+        // Simulate what PolicyEngine::load_budget_from_db does internally:
+        // rows = [("agent-1", 1000, 2.5), ("agent-2", 500, 1.0)]
+        let rows: Vec<(String, i64, f64)> = vec![
+            ("agent-1".to_string(), 1000, 2.5),
+            ("agent-2".to_string(), 500, 1.0),
+        ];
+        for (agent_id, tokens, cost_usd) in rows {
+            let usage = tracker.daily_usage_entry(&agent_id);
+            usage.tokens = usage.tokens.saturating_add(tokens as u64);
+            usage.cost_usd += cost_usd;
+        }
+
+        assert_eq!(tracker.current_usage("agent-1").tokens, 1000);
+        assert!((tracker.current_usage("agent-1").cost_usd - 2.5).abs() < 1e-9);
+        assert_eq!(tracker.current_usage("agent-2").tokens, 500);
     }
 }
