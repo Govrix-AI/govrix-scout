@@ -16,8 +16,6 @@
 //! After each call to `record_usage`, fire-and-forget DB persistence is triggered
 //! via `record_usage_with_db()`, which spawns a non-blocking `tokio::spawn` task.
 
-#![allow(dead_code)]
-
 use std::collections::HashMap;
 
 use chrono::{NaiveDate, Utc};

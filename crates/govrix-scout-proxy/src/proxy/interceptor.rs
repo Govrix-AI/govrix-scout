@@ -313,6 +313,14 @@ pub async fn log_response_event(
     // ── Policy hook: compute compliance_tag ──────────────────────────────────
     event.compliance_tag = state.policy_hook.compliance_tag(&event);
 
+    // ── Budget: record actual usage so counters reflect live traffic ──────────
+    let tokens = event.total_tokens.unwrap_or(0) as u64;
+    let cost = event
+        .cost_usd
+        .and_then(|d| rust_decimal::prelude::ToPrimitive::to_f64(&d))
+        .unwrap_or(0.0);
+    state.policy_hook.record_usage(&ctx.agent_id, tokens, cost, state.db_pool.clone());
+
     // Update session lineage
     {
         let mut tracker = state.session_tracker.lock().await;

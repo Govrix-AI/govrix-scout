@@ -380,6 +380,10 @@ impl super::PolicyHook for PolicyEngine {
         // until the full pre-request intercept path is implemented.
         None
     }
+
+    fn record_usage(&self, agent_id: &str, tokens: u64, cost_usd: f64, pool: Option<govrix_scout_store::StorePool>) {
+        self.record_usage_with_db(agent_id, tokens, cost_usd, pool);
+    }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

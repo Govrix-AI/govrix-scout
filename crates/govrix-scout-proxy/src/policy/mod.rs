@@ -64,6 +64,15 @@ pub trait PolicyHook: Send + Sync {
         let _ = event;
         None
     }
+
+    /// Record actual token and cost usage after an event completes.
+    ///
+    /// Called from `log_response_event` after the compliance tag is set.
+    /// Implementations should update in-memory budget counters and optionally
+    /// persist the delta to the database (fire-and-forget, non-blocking).
+    ///
+    /// Default: no-op (used by `NoOpPolicy` and other non-budget hooks).
+    fn record_usage(&self, _agent_id: &str, _tokens: u64, _cost_usd: f64, _pool: Option<govrix_scout_store::StorePool>) {}
 }
 
 /// Default no-op policy — allows all traffic with `"audit:none"` tag.
