@@ -12,15 +12,15 @@
 //!
 //! Events
 //!   GET  /api/v1/events
-//!   GET  /api/v1/events/sessions/:session_id   ← must come BEFORE /events/:id
-//!   GET  /api/v1/events/:id
+//!   GET  /api/v1/events/sessions/{session_id}   ← must come BEFORE /events/{id}
+//!   GET  /api/v1/events/{id}
 //!
 //! Agents
 //!   GET  /api/v1/agents
-//!   GET  /api/v1/agents/:id
-//!   PUT  /api/v1/agents/:id
-//!   POST /api/v1/agents/:id/retire
-//!   GET  /api/v1/agents/:id/events
+//!   GET  /api/v1/agents/{id}
+//!   PUT  /api/v1/agents/{id}
+//!   POST /api/v1/agents/{id}/retire
+//!   GET  /api/v1/agents/{id}/events
 //!
 //! Costs
 //!   GET  /api/v1/costs/summary
@@ -67,26 +67,26 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/ready", get(handlers::health::ready))
         .route("/metrics", get(metrics_handler))
         // ── Events ─────────────────────────────────────────────────────────
-        // NOTE: /events/sessions/:session_id must be registered before /events/:id
+        // NOTE: /events/sessions/{session_id} must be registered before /events/{id}
         // so axum matches the literal "sessions" segment first.
         .route("/api/v1/events", get(handlers::events::list_events))
         .route(
-            "/api/v1/events/sessions/:session_id",
+            "/api/v1/events/sessions/{session_id}",
             get(handlers::events::get_session_events),
         )
-        .route("/api/v1/events/:id", get(handlers::events::get_event))
+        .route("/api/v1/events/{id}", get(handlers::events::get_event))
         // ── Agents ─────────────────────────────────────────────────────────
         .route("/api/v1/agents", get(handlers::agents::list_agents))
         .route(
-            "/api/v1/agents/:id",
+            "/api/v1/agents/{id}",
             get(handlers::agents::get_agent).put(handlers::agents::update_agent),
         )
         .route(
-            "/api/v1/agents/:id/retire",
+            "/api/v1/agents/{id}/retire",
             post(handlers::agents::retire_agent),
         )
         .route(
-            "/api/v1/agents/:id/events",
+            "/api/v1/agents/{id}/events",
             get(handlers::agents::get_agent_events),
         )
         // ── Costs ──────────────────────────────────────────────────────────
@@ -181,18 +181,18 @@ pub fn build_router() -> Router {
         .route("/ready", get(ready_no_state))
         .route("/metrics", get(metrics_stub_handler))
         .route("/api/v1/events", get(stub_list))
-        .route("/api/v1/events/:id", get(stub_item))
+        .route("/api/v1/events/{id}", get(stub_item))
         .route(
-            "/api/v1/events/sessions/:session_id",
+            "/api/v1/events/sessions/{session_id}",
             get(stub_session_events),
         )
         .route("/api/v1/agents", get(stub_list))
         .route(
-            "/api/v1/agents/:id",
+            "/api/v1/agents/{id}",
             get(stub_item).put(stub_not_implemented),
         )
-        .route("/api/v1/agents/:id/retire", post(stub_not_implemented))
-        .route("/api/v1/agents/:id/events", get(stub_list))
+        .route("/api/v1/agents/{id}/retire", post(stub_not_implemented))
+        .route("/api/v1/agents/{id}/events", get(stub_list))
         .route("/api/v1/costs/summary", get(stub_cost_summary))
         .route("/api/v1/costs/breakdown", get(stub_cost_breakdown))
         .route("/api/v1/reports/types", get(handlers::reports::list_types))
@@ -288,7 +288,7 @@ async fn stub_config() -> impl IntoResponse {
 #[cfg(test)]
 mod tests {
     #[test]
-    fn dashboard_html_contains_Govrix Scout() {
+    fn dashboard_html_contains_govrix_scout() {
         let html = include_str!("../../static/dashboard.html");
         assert!(html.contains("Govrix Scout"));
         assert!(html.contains("/api/v1/agents"));

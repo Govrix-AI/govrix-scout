@@ -1,99 +1,145 @@
-# AgentMesh — Project Configuration
+# Govrix Scout — OSS AI Agent Observability Proxy
 
 ## FIRST: Read Shared Context
 
-**EVERY Claude session MUST read these files before doing ANY work:**
-1. `.context/SESSION_LOG.md` — What was done, what's left, blockers (append-only)
-2. `.context/MEMORY.md` — Stable reference (tech stack, schemas, architecture)
+**Every session MUST read these before any work:**
+1. `.context/MEMORY.md` — Stable project knowledge (schemas, API contracts, architecture)
+2. `.context/SESSION_LOG.md` — What was done, what's left, blockers (append-only)
 
-**After EVERY session, update `.context/SESSION_LOG.md`** with:
-- What was done (numbered list)
-- What's left (checkbox list)
-- Test counts
-- Key decisions made
-- Blockers/notes
+**After every session, append to `.context/SESSION_LOG.md`** with: what was done, what's left, test counts, blockers.
 
-This is how multiple Claude instances stay in sync across sessions and machines.
+---
 
-## Monorepo Structure
+## What This Is
+
+Govrix Scout is the **open-source core** of Govrix: a transparent HTTP proxy that sits between AI agents and their APIs (OpenAI, Anthropic, MCP). It captures every request/response for audit, compliance, and cost tracking — with zero agent code changes.
+
+The enterprise features (policy enforcement, mTLS, session recorder, SSO) live in the separate `govrix` repo.
+
+---
+
+## Quick Start
+
+```bash
+# First-time setup
+./scripts/setup.sh
+
+# Start full stack (TimescaleDB + proxy + dashboard)
+make docker-up
+
+# Point agents (one env var, no code changes needed)
+export OPENAI_BASE_URL=http://localhost:4000/proxy/openai/v1
+export ANTHROPIC_BASE_URL=http://localhost:4000/proxy/anthropic/v1
+
+# Dashboard
+open http://localhost:3000
+
+# Verify
+curl http://localhost:4001/health   # {"status":"ok","version":"0.1.0"}
+```
+
+---
+
+## Dev Commands
+
+```bash
+make setup           # First-time: Rust toolchain + pnpm + deps
+make docker-up       # Start TimescaleDB + proxy + dashboard
+make docker-down     # Stop containers
+make dev-proxy       # Proxy in watch mode — ports 4000/4001 (binary: govrix-scout)
+make dev-dashboard   # React dev server with HMR — port 3000
+make test            # All Rust tests
+make test-proxy      # Proxy crate only (-p govrix-scout-proxy)
+make lint            # cargo clippy --workspace -- -D warnings
+make fmt             # cargo fmt --all
+make check           # Fast cargo check
+make build           # Release build — all crates
+make build-proxy     # Release build — govrix-scout-proxy crate only
+make migrate         # Apply SQL migrations (needs DATABASE_URL)
+make db-reset        # Drop + recreate DB then migrate
+make docker-logs     # Tail container logs
+make ci              # Full CI: fmt-check + lint + test + build
+```
+
+---
+
+## Workspace Structure (5 Rust Crates)
 
 ```
-/home/manas/Code/Startup/
-├── .context/                      # SHARED CONTEXT (read first every session!)
-│   ├── MEMORY.md                  # Stable project knowledge
-│   └── SESSION_LOG.md             # Per-session progress log
-├── Docs/                          # Documentation & specs
-│   ├── Tech/                      # Technical build specs
-│   ├── Ideation/                  # Product ideation docs
-│   └── MarketResearch/            # Market research
-├── Opensource/                     # AgentMesh OSS
-│   └── agentmesh/                 # Rust proxy + React dashboard monorepo
-├── Scanner/                       # Agent scanning components
-├── .claude/
-│   └── skills/                    # Claude Code skills (MUST use)
-│       ├── rust-proxy/            # Rust proxy architecture decisions
-│       ├── agentmesh-schemas/     # Canonical DB schemas (PG, CH, SQLite)
-│       └── compliance-first/      # Core compliance invariant
-└── CLAUDE.md                      # This file
+govrix-scout/
+├── crates/
+│   ├── govrix-scout-common/   # Shared types, config, models, protocol parsers
+│   ├── govrix-scout-proxy/    # Hot-path proxy + REST API — binary: govrix-scout
+│   ├── govrix-scout-store/    # PostgreSQL + TimescaleDB layer (sqlx)
+│   ├── govrix-scout-cli/      # CLI — binary: govrix-scout-cli
+│   └── govrix-scout-reports/  # PDF + JSON report generation
+├── dashboard/                 # React 18 + TypeScript + Vite + Tailwind CSS
+├── docker/                    # docker-compose.yml, Dockerfile, nginx.conf
+├── migrations/                # 5 SQL files (idempotent)
+├── config/                    # govrix.default.toml, policies.example.yaml
+└── scripts/                   # setup.sh, verify.sh
 ```
 
-## Tech Stack
+---
 
-| Layer | Technology | Where |
-|-------|-----------|-------|
-| **SaaS Proxy** | Rust (hyper, not axum for hot path) | Future SaaS platform |
-| **SaaS Backend** | TypeScript + Next.js | Future SaaS platform |
-| **SaaS Storage** | PostgreSQL (registry) + ClickHouse (events) | Future SaaS platform |
-| **Scout OSS** | Python 3.11+ (Click, FastAPI, HTMX, SQLite) | `Opensource/agentmesh-scout/` |
-| **Scout Storage** | SQLite + SQLAlchemy 2.0+ | Local only |
-| **Scout Dashboard** | FastAPI + HTMX + Tailwind CSS | localhost:8477 |
-| **PII Detection** | Microsoft Presidio + regex | Both OSS and SaaS |
-| **Reports** | ReportLab (PDF) + JSON | Both OSS and SaaS |
+## Port Map
 
-## Skills (MUST Read Before Coding)
+| Port | Service |
+|------|---------|
+| 4000 | Proxy — agent traffic |
+| 4001 | Management REST API |
+| 3000 | React dashboard |
+| 5432 | PostgreSQL / TimescaleDB |
+| 9090 | Prometheus metrics |
 
-These skills encode architecture decisions. Every subagent MUST invoke the relevant skill before writing code:
+---
 
-- **rust-proxy** — Use when touching proxy/networking code. Encodes: hyper not axum, SSE stream-through, body tee pattern, `detect_protocol()` signature, fail-open design.
-- **agentmesh-schemas** — Use when touching ANY database code. Contains canonical SQL for PostgreSQL (agent registry), ClickHouse (event log), and SQLite (Scout). Table names, column types, indexes are final.
-- **compliance-first** — Use when writing ANY interceptor/logging code. Core invariant: every intercepted action MUST generate `session_id`, `timestamp`, `lineage_hash`, `compliance_tag`. No exceptions.
+## Architecture: Key Invariants
 
-## Inter-Agent Communication
+**Hot path** (`govrix-scout-proxy`):
+- Uses `hyper` directly — NOT axum — for <1ms p50, <5ms p99 latency
+- Management API uses `axum` on port 4001 (separate from hot path)
+- Fire-and-forget: events go to a bounded `mpsc` channel (10K) and are never awaited
+- **Fail-open**: internal errors must never block upstream agent traffic
 
-- **MEMORY.md** (`~/.claude/projects/-home-manas-Code-Startup/memory/MEMORY.md`) is the persistent memory file for cross-session knowledge
-- Subagents should record architectural decisions and patterns discovered during work
-- Check MEMORY.md at session start for context from previous sessions
+**Compliance invariant** — every captured event MUST have:
+- `session_id` — groups related requests in a conversation
+- `timestamp` — UTC ISO-8601, microsecond precision
+- `lineage_hash` — SHA-256 Merkle chain (tamper-evident)
+- `compliance_tag` — `pass:all`, `warn:pii_email`, `audit:budget`, etc.
 
-## Development Rules
+---
 
-### Always Use Subagents for File Reading
-When exploring the codebase or reading multiple files, use the Task tool with `subagent_type=Explore` rather than reading files sequentially in the main context. This protects the main context window.
+## API Endpoints (port 4001)
 
-### Scout OSS Constraints (from Build Spec)
-1. **Zero agent modification** — Agents connect by changing ONE env var, no code changes
-2. **Local-only data** — No telemetry, no cloud sync, SQLite only, localhost dashboard
-3. **Fail-open proxy** — If proxy crashes, agent traffic continues
-4. **Latency budget** — Proxy adds < 5ms per request; analysis is async
-5. **No PII in alerts** — Store type and location, NEVER the actual PII value
-6. **Read-only observation** — Scout NEVER modifies/blocks/filters agent traffic
-7. **Apache 2.0 license** — Permissive, no copyleft
-8. **Python 3.11+ only** — Use modern features (match, tomllib, improved asyncio)
-9. **Upsell placement** — PDF report footer and dashboard footer link to AgentMesh SaaS
+| Group | Endpoints |
+|-------|-----------|
+| Health | `GET /health`, `GET /ready`, `GET /metrics` |
+| Events | `GET /api/v1/events`, `GET /api/v1/events/{id}`, `GET /api/v1/events/sessions/{session_id}`, `GET /api/v1/events/stream` |
+| Agents | `GET /api/v1/agents`, `GET /api/v1/agents/{id}`, `PUT /api/v1/agents/{id}`, `POST /api/v1/agents/{id}/retire`, `GET /api/v1/agents/{id}/events` |
+| Costs | `GET /api/v1/costs/summary`, `GET /api/v1/costs/breakdown` |
+| Reports | `GET /api/v1/reports/types`, `POST /api/v1/reports/generate`, `GET /api/v1/reports` |
+| Config | `GET /api/v1/config` |
 
-### SaaS Platform Constraints
-1. **Rust proxy** — Follow rust-proxy skill exactly for hot path decisions
-2. **Compliance-first** — Every event gets the four compliance fields (see skill)
-3. **Schema fidelity** — All DB code matches agentmesh-schemas skill exactly
+Bearer token auth on `/api/v1/*`. Response format: `{"data": [...], "total": N}`.
 
-### Code Quality
-- Use `black` + `ruff` for Python formatting/linting
-- Use `clippy` for Rust linting
-- Every module must have corresponding tests (pytest for Python, cargo test for Rust)
-- No hardcoded API keys, tokens, or secrets anywhere
+---
 
-## Build Spec Reference
+## Configuration
 
-The canonical build specification for Scout OSS is at:
-`Docs/Tech/AgentMesh_Scout_Build_Spec.docx`
+```bash
+GOVRIX_STORE__DATABASE_URL=postgresql://govrix:govrix@localhost:5432/govrix
+GOVRIX_PROXY__LISTEN_PORT=4000
+GOVRIX_API_KEY=your_secret_key_here
+RUST_LOG=govrix_scout_proxy=info
+```
 
-This document defines: project structure, all CLI commands, database schema, proxy implementation, PII detection spec, dashboard pages, build phases, testing strategy, and launch checklist.
+---
+
+## Code Standards
+
+- Rust: `clippy` + `rustfmt` — no warnings
+- TypeScript: ESLint + Prettier
+- Tests: `cargo test --workspace`
+- No hardcoded secrets
+- All 4 compliance fields on every event — never optional

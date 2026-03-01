@@ -34,7 +34,7 @@ async fn main() -> anyhow::Result<()> {
 
     // ── Configuration ─────────────────────────────────────────────────────────
     let config_path = std::env::var("GOVRIX_CONFIG")
-        .unwrap_or_else(|_| "config/Govrix Scout.default.toml".to_string());
+        .unwrap_or_else(|_| "config/govrix.default.toml".to_string());
     let config = Config::load_or_default(&config_path);
 
     tracing::info!(

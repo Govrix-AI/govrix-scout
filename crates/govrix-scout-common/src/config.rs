@@ -125,7 +125,7 @@ impl Default for ProxyConfig {
 impl Default for DatabaseConfig {
     fn default() -> Self {
         Self {
-            url: "postgres://Govrix Scout:Govrix Scout@localhost:5432/Govrix Scout".to_string(),
+            url: "postgres://govrix_scout:govrix_scout@localhost:5432/govrix_scout".to_string(),
             max_connections: 20,
             min_connections: 2,
             connect_timeout_secs: 10,

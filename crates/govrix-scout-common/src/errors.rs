@@ -4,7 +4,7 @@ use thiserror::Error;
 
 /// Top-level error type for Govrix Scout operations.
 #[derive(Debug, Error)]
-pub enum Govrix ScoutError {
+pub enum GovrixScoutError {
     #[error("database error: {0}")]
     Database(#[from] DatabaseError),
 
@@ -87,7 +87,7 @@ pub enum ProxyError {
     AgentUnresolved,
 }
 
-impl Govrix ScoutError {
+impl GovrixScoutError {
     /// Create an "other" error from any displayable value.
     pub fn other(msg: impl std::fmt::Display) -> Self {
         Self::Other(msg.to_string())

@@ -1,4 +1,4 @@
-# AgentMesh Dashboard — Node build + nginx serve
+# Govrix Dashboard — Node build + nginx serve
 # ──────────────────────────────────────────────────────────────────────────────
 # Stage 1: Build React app with pnpm
 # Stage 2: Serve with nginx:alpine
@@ -33,7 +33,7 @@ server {
     root /usr/share/nginx/html;
     index index.html;
 
-    # API proxy to agentmesh backend
+    # API proxy to Govrix backend
     location /api/ {
         proxy_pass http://proxy:4001;
         proxy_set_header Host $host;
@@ -54,4 +54,4 @@ EOF
 EXPOSE 3000
 
 HEALTHCHECK --interval=30s --timeout=5s \
-    CMD wget -q --spider http://localhost:3000 || exit 1
+    CMD wget -q --spider http://127.0.0.1:3000 || exit 1

@@ -1,0 +1,17 @@
+# Govrix — Local development override
+#
+# Uses the pre-built binary from target/release/ — no Docker network access to
+# crates.io needed. Build the binary on host first, then use this compose file.
+#
+# Usage:
+#   make docker-up-local    (does cargo build + docker compose up automatically)
+#
+# Or manually:
+#   cargo build --release -p govrix-scout-proxy
+#   docker compose -f docker/docker-compose.yml -f docker/docker-compose.local.yml up -d
+
+services:
+  proxy:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.prebuilt

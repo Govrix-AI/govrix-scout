@@ -7,7 +7,7 @@ volumes:
 
 # ── Networks ──────────────────────────────────────────────────────────────────
 networks:
-  Govrix Scout:
+  govrix-scout:
     driver: bridge
 
 # ── Services ──────────────────────────────────────────────────────────────────
@@ -19,8 +19,8 @@ services:
     container_name: govrix-scout-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: Govrix Scout
-      POSTGRES_USER: Govrix Scout
+      POSTGRES_DB: govrix
+      POSTGRES_USER: govrix
       POSTGRES_PASSWORD: govrix_scout_dev
     ports:
       - "5432:5432"
@@ -29,9 +29,9 @@ services:
       # Run migrations on first start
       - ../migrations:/docker-entrypoint-initdb.d:ro
     networks:
-      - Govrix Scout
+      - govrix-scout
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U Govrix Scout -d Govrix Scout"]
+      test: ["CMD-SHELL", "pg_isready -U govrix -d govrix"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -48,20 +48,19 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      GOVRIX_DATABASE__URL: postgres://Govrix Scout:govrix_scout_dev@postgres:5432/Govrix Scout
+      GOVRIX_DATABASE__URL: postgres://govrix:govrix_scout_dev@postgres:5432/govrix
       GOVRIX_DATABASE__MAX_CONNECTIONS: "20"
       GOVRIX_DATABASE__MIN_CONNECTIONS: "2"
       GOVRIX_PROXY__LISTEN_ADDR: "0.0.0.0:4000"
       GOVRIX_API__LISTEN_ADDR: "0.0.0.0:4001"
       GOVRIX_METRICS__LISTEN_ADDR: "0.0.0.0:9090"
-      GOVRIX_LOG: "Govrix Scout=info,tower_http=debug"
-      RUST_LOG: "Govrix Scout=info"
+      RUST_LOG: "govrix_scout_proxy=info,tower_http=debug"
     ports:
       - "4000:4000"   # Proxy (hot path)
       - "4001:4001"   # REST API
       - "9090:9090"   # Prometheus metrics
     networks:
-      - Govrix Scout
+      - govrix-scout
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:4001/health || exit 1"]
       interval: 15s
@@ -82,9 +81,9 @@ services:
     ports:
       - "3000:3000"
     networks:
-      - Govrix Scout
+      - govrix-scout
     healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider http://localhost:3000 || exit 1"]
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:3000 || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3

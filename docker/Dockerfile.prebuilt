@@ -1,0 +1,38 @@
+# Govrix — Pre-built binary Docker image
+#
+# Uses a binary already compiled on the host (target/release/govrix-scout).
+# No Rust toolchain needed inside Docker — zero network downloads during build.
+#
+# Usage:
+#   cargo build --release -p govrix-scout-proxy   # build on host first
+#   make docker-up-local                           # then package + start
+#
+# When to use this vs Dockerfile:
+#   Dockerfile          — production CI, cloud builds, fresh machines (downloads crates)
+#   Dockerfile.prebuilt — local dev, slow networks, quick iteration
+
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy Linux binary (built by 'make docker-build-local' into .linux-build/)
+COPY .linux-build/release/govrix-scout /usr/local/bin/govrix-scout
+
+# Copy default config
+COPY config/govrix.default.toml /app/config/govrix.default.toml
+
+# Non-root user
+RUN useradd -r -s /bin/false govrix
+USER govrix
+
+EXPOSE 4000 4001 9090
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:4001/health || exit 1
+
+ENTRYPOINT ["govrix-scout"]
