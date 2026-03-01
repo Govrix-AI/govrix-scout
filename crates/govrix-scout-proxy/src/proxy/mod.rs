@@ -62,6 +62,22 @@ pub async fn serve_full(
     policy_hook: Arc<dyn PolicyHook>,
     upstream_urls: UpstreamUrls,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    serve_full_with_pool(addr, event_sender, metrics, policy_hook, upstream_urls, None).await
+}
+
+/// Start the hyper proxy server with a database pool for kill-switch enforcement.
+///
+/// When `db_pool` is `Some`, the proxy checks agent status before forwarding
+/// each request. Blocked agents receive a 403. When `None`, the check is skipped
+/// and the proxy operates in fail-open mode (same as `serve_full`).
+pub async fn serve_full_with_pool(
+    addr: SocketAddr,
+    event_sender: EventSender,
+    metrics: Arc<Metrics>,
+    policy_hook: Arc<dyn PolicyHook>,
+    upstream_urls: UpstreamUrls,
+    db_pool: Option<govrix_scout_store::StorePool>,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     use hyper::server::conn::http1;
     use hyper_util::rt::TokioIo;
     use tokio::net::TcpListener;
@@ -70,12 +86,22 @@ pub async fn serve_full(
     tracing::info!("proxy listening on {}", addr);
 
     // Shared interceptor state — one instance for the whole server
-    let state = Arc::new(InterceptorState::with_upstream_urls(
-        event_sender,
-        metrics,
-        policy_hook,
-        upstream_urls,
-    ));
+    let state = if let Some(pool) = db_pool {
+        Arc::new(InterceptorState::with_pool_and_upstream_urls(
+            event_sender,
+            metrics,
+            policy_hook,
+            upstream_urls,
+            pool,
+        ))
+    } else {
+        Arc::new(InterceptorState::with_upstream_urls(
+            event_sender,
+            metrics,
+            policy_hook,
+            upstream_urls,
+        ))
+    };
 
     loop {
         let (stream, peer_addr) = listener.accept().await?;

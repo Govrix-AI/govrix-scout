@@ -294,6 +294,96 @@ impl PolicyEngine {
             );
         }
     }
+
+    /// Record actual usage and fire-and-forget persist the delta to the DB.
+    ///
+    /// Identical to `record_usage` but also spawns a non-blocking `tokio::spawn`
+    /// task to upsert the `budget_daily` row for `agent_id`.  When `pool` is
+    /// `None`, only the in-memory update is performed (fail-open).
+    pub fn record_usage_with_db(
+        &self,
+        agent_id: &str,
+        tokens: u64,
+        cost_usd: f64,
+        pool: Option<govrix_scout_store::StorePool>,
+    ) {
+        if let Ok(mut tracker) = self.budget_tracker.lock() {
+            super::budget::record_usage_with_db(&mut tracker, pool, agent_id, tokens, cost_usd);
+        } else {
+            tracing::warn!(
+                agent_id = %agent_id,
+                "budget tracker mutex poisoned — usage not recorded (DB persist skipped)"
+            );
+        }
+    }
+
+    /// Pre-load today's budget counters from the database into the in-memory tracker.
+    ///
+    /// Must be called once at startup (after the pool is established) so that
+    /// budget counters survive proxy restarts.  DB errors are logged and ignored
+    /// (fail-open — the proxy still starts and enforces from zero).
+    ///
+    /// The DB query is issued without holding the Mutex to avoid holding a
+    /// non-Send guard across an `.await` point.  The result is then applied
+    /// while the Mutex is held (briefly, synchronously).
+    pub async fn load_budget_from_db(&self, pool: &govrix_scout_store::StorePool) {
+        // Fetch rows from DB without holding the Mutex (can't hold non-Send Mutex across await).
+        let rows = match govrix_scout_store::list_budget_today(pool).await {
+            Ok(r) => r,
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    "budget engine: failed to load today's counters from DB (fail-open)"
+                );
+                return;
+            }
+        };
+
+        let count = rows.len();
+
+        // Now apply rows to in-memory tracker — synchronous, no await.
+        if let Ok(mut tracker) = self.budget_tracker.lock() {
+            for (agent_id, tokens, cost_usd) in rows {
+                let usage = tracker.daily_usage_entry(&agent_id);
+                usage.tokens = usage.tokens.saturating_add(tokens as u64);
+                usage.cost_usd += cost_usd;
+            }
+            tracing::info!(
+                agents_loaded = count,
+                "budget engine: pre-loaded today's counters from DB"
+            );
+        } else {
+            tracing::warn!(
+                "budget tracker mutex poisoned — could not apply DB counters"
+            );
+        }
+    }
+}
+
+// ── PolicyHook implementation ─────────────────────────────────────────────────
+
+/// Make `PolicyEngine` usable as a `PolicyHook` so it can be passed directly
+/// to the proxy's `serve_full_with_pool` without a wrapping adapter.
+///
+/// `compliance_tag` runs the full policy evaluation and returns the highest-
+/// severity tag.  `check_request` returns `None` (allow) for now — blocking
+/// logic can be added when per-rule block actions are wired into the hot path.
+impl super::PolicyHook for PolicyEngine {
+    fn compliance_tag(&self, event: &AgentEvent) -> String {
+        let decisions = self.evaluate(event);
+        Self::compute_compliance_tag(&decisions)
+    }
+
+    fn check_request(&self, _event: &AgentEvent) -> Option<String> {
+        // Block logic is not yet wired into the hot path for OSS.
+        // Returns None (allow) so traffic is never blocked by the policy engine
+        // until the full pre-request intercept path is implemented.
+        None
+    }
+
+    fn record_usage(&self, agent_id: &str, tokens: u64, cost_usd: f64, pool: Option<govrix_scout_store::StorePool>) {
+        self.record_usage_with_db(agent_id, tokens, cost_usd, pool);
+    }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

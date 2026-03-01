@@ -92,10 +92,52 @@ async fn main() -> anyhow::Result<()> {
         .parse()
         .expect("invalid API bind address");
 
+    // ── Policy engine ─────────────────────────────────────────────────────────
+    // Build the policy engine (YAML policy evaluation + budget tracking).
+    // If no policy file is configured, the engine starts in allow-all mode.
+    let policy_config_path = std::env::var("GOVRIX_POLICY_FILE")
+        .unwrap_or_else(|_| "config/policies.example.yaml".to_string());
+
+    let policy_engine = {
+        let path = std::path::Path::new(&policy_config_path);
+        if path.exists() {
+            match govrix_scout_proxy::policy::PolicyEngine::from_file(path) {
+                Ok(engine) => {
+                    tracing::info!(path = %policy_config_path, "policy engine loaded from file");
+                    engine
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        error = %e,
+                        path = %policy_config_path,
+                        "failed to load policy file — using allow-all policy"
+                    );
+                    govrix_scout_proxy::policy::PolicyEngine::noop()
+                }
+            }
+        } else {
+            tracing::info!("no policy file found — using allow-all policy");
+            govrix_scout_proxy::policy::PolicyEngine::noop()
+        }
+    };
+
+    // ── Budget counter pre-load ───────────────────────────────────────────────
+    // Load today's persisted budget counters from `budget_daily` into the
+    // in-memory tracker so enforcement limits survive proxy restarts.
+    // Fail-open: DB unavailability is logged and counters start from zero.
+    if let Some(ref p) = pool {
+        policy_engine.load_budget_from_db(p).await;
+    }
+
+    let policy_hook: std::sync::Arc<dyn govrix_scout_proxy::policy::PolicyHook> =
+        std::sync::Arc::new(policy_engine);
+
     // ── Proxy server ──────────────────────────────────────────────────────────
-    // Pass the event sender and metrics into the proxy for fire-and-forget event logging
+    // Pass the event sender and metrics into the proxy for fire-and-forget event logging.
+    // Also pass a clone of the DB pool so the proxy can enforce the kill switch.
     let proxy_event_sender = event_sender.clone();
     let proxy_metrics = metrics.clone();
+    let proxy_pool = pool.clone(); // None when DB is unavailable — proxy runs fail-open
     let upstream_urls = proxy::UpstreamUrls {
         openai: config.proxy.upstream_openai.clone(),
         anthropic: config.proxy.upstream_anthropic.clone(),
@@ -107,12 +149,13 @@ async fn main() -> anyhow::Result<()> {
         "upstream URLs configured"
     );
     let proxy_handle = tokio::spawn(async move {
-        if let Err(e) = proxy::serve_full(
+        if let Err(e) = proxy::serve_full_with_pool(
             proxy_addr,
             proxy_event_sender,
             proxy_metrics,
-            std::sync::Arc::new(govrix_scout_proxy::policy::NoOpPolicy),
+            policy_hook,
             upstream_urls,
+            proxy_pool,
         )
         .await
         {

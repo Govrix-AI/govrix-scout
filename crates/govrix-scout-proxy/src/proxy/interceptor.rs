@@ -39,6 +39,11 @@ pub struct InterceptorState {
     pub policy_hook: Arc<dyn PolicyHook>,
     /// Configurable upstream base URLs for each provider.
     pub upstream_urls: Arc<UpstreamUrls>,
+    /// Optional database pool for agent status look-ups (kill switch).
+    ///
+    /// When `None` (e.g. proxy started without a database), the kill switch
+    /// check is skipped and the request is forwarded (fail-open).
+    pub db_pool: Option<govrix_scout_store::StorePool>,
 }
 
 impl InterceptorState {
@@ -53,6 +58,7 @@ impl InterceptorState {
             metrics,
             policy_hook,
             upstream_urls: Arc::new(UpstreamUrls::default()),
+            db_pool: None,
         }
     }
 
@@ -69,6 +75,28 @@ impl InterceptorState {
             metrics,
             policy_hook,
             upstream_urls: Arc::new(upstream_urls),
+            db_pool: None,
+        }
+    }
+
+    /// Create a new InterceptorState with custom upstream URLs and a database pool.
+    ///
+    /// Use this constructor when a database connection is available so that the
+    /// kill-switch (agent status) check is enforced on every proxied request.
+    pub fn with_pool_and_upstream_urls(
+        event_sender: EventSender,
+        metrics: Arc<Metrics>,
+        policy_hook: Arc<dyn PolicyHook>,
+        upstream_urls: UpstreamUrls,
+        db_pool: govrix_scout_store::StorePool,
+    ) -> Self {
+        Self {
+            session_tracker: Mutex::new(SessionTracker::new()),
+            event_sender,
+            metrics,
+            policy_hook,
+            upstream_urls: Arc::new(upstream_urls),
+            db_pool: Some(db_pool),
         }
     }
 }
@@ -285,6 +313,14 @@ pub async fn log_response_event(
     // ── Policy hook: compute compliance_tag ──────────────────────────────────
     event.compliance_tag = state.policy_hook.compliance_tag(&event);
 
+    // ── Budget: record actual usage so counters reflect live traffic ──────────
+    let tokens = event.total_tokens.unwrap_or(0) as u64;
+    let cost = event
+        .cost_usd
+        .and_then(|d| rust_decimal::prelude::ToPrimitive::to_f64(&d))
+        .unwrap_or(0.0);
+    state.policy_hook.record_usage(&ctx.agent_id, tokens, cost, state.db_pool.clone());
+
     // Update session lineage
     {
         let mut tracker = state.session_tracker.lock().await;
@@ -392,6 +428,29 @@ pub fn protocol_to_provider(protocol: &Protocol) -> Provider {
     }
 }
 
+/// Returns true when the JSON value from `get_agent` indicates the agent is blocked.
+///
+/// Centralises the status-check logic so it can be tested without a database.
+pub fn agent_json_is_blocked(agent_json: &serde_json::Value) -> bool {
+    agent_json
+        .get("status")
+        .and_then(|s| s.as_str())
+        .map(|s| s == "blocked")
+        .unwrap_or(false)
+}
+
+/// Build the HTTP 403 response returned when a blocked agent tries to make a request.
+pub fn build_agent_blocked_response() -> hyper::Response<http_body_util::Full<bytes::Bytes>> {
+    let body = bytes::Bytes::from_static(
+        b"{\"error\":\"agent_blocked\",\"message\":\"This agent has been retired and is no longer permitted to make requests\"}",
+    );
+    hyper::Response::builder()
+        .status(403)
+        .header("content-type", "application/json")
+        .body(http_body_util::Full::new(body))
+        .expect("static 403 response must be valid")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -423,5 +482,51 @@ mod tests {
         };
         let result = analyze_request(&proto, "agent-1", &Bytes::new()).await;
         assert!(result.is_ok());
+    }
+
+    // ── Kill switch unit tests ────────────────────────────────────────────────
+
+    #[test]
+    fn blocked_agent_json_is_detected() {
+        let json = serde_json::json!({"id": "agent-1", "status": "blocked"});
+        assert!(agent_json_is_blocked(&json));
+    }
+
+    #[test]
+    fn active_agent_json_is_not_blocked() {
+        let json = serde_json::json!({"id": "agent-1", "status": "active"});
+        assert!(!agent_json_is_blocked(&json));
+    }
+
+    #[test]
+    fn error_agent_json_is_not_blocked() {
+        let json = serde_json::json!({"id": "agent-1", "status": "error"});
+        assert!(!agent_json_is_blocked(&json));
+    }
+
+    #[test]
+    fn missing_status_field_is_not_blocked() {
+        let json = serde_json::json!({"id": "agent-1"});
+        assert!(!agent_json_is_blocked(&json));
+    }
+
+    #[test]
+    fn blocked_response_is_403_with_correct_body() {
+        use http_body_util::BodyExt;
+
+        let resp = build_agent_blocked_response();
+        assert_eq!(resp.status().as_u16(), 403);
+
+        // Verify Content-Type header
+        let ct = resp.headers().get("content-type").unwrap();
+        assert_eq!(ct, "application/json");
+
+        // Verify body parses as JSON with the expected fields
+        let body_bytes = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(async { resp.into_body().collect().await.unwrap().to_bytes() });
+        let v: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+        assert_eq!(v["error"], "agent_blocked");
+        assert!(v["message"].as_str().is_some());
     }
 }

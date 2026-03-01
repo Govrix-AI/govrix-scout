@@ -4,9 +4,11 @@
 //! - `events` table (TimescaleDB hypertable)
 //! - `agents` table (registry)
 //! - `cost_daily` materialized view
+//! - `budget_daily` table (budget counter persistence)
 //! - Data retention management
 
 pub mod agents;
+pub mod budget;
 pub mod costs;
 pub mod db;
 pub mod events;
@@ -26,3 +28,6 @@ pub use events::{get_event, get_events_for_agent, get_session_events, list_event
 
 // Cost query types
 pub use costs::{CostBreakdownRow, CostSummary, Granularity, GroupBy};
+
+// Budget persistence
+pub use budget::{get_budget_today, get_global_budget_today, list_budget_today, upsert_budget_usage};
