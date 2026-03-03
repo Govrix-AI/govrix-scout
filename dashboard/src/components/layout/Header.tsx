@@ -19,8 +19,9 @@ export default function Header() {
   const { data: health } = useHealth()
 
   const statusColor =
-    health?.status === 'ok' ? 'bg-emerald-500' :
-    health?.status === 'degraded' ? 'bg-amber-500' :
+    !health ? 'bg-slate-300 dark:bg-slate-600' :
+    health.status === 'ok' ? 'bg-emerald-500' :
+    health.status === 'degraded' ? 'bg-amber-500' :
     'bg-red-500'
 
   return (

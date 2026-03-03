@@ -1,11 +1,10 @@
 import { Lock } from 'lucide-react'
 
 interface Props {
-  feature: string
   description: string
 }
 
-export default function EnterpriseGate({ feature: _feature, description }: Props) {
+export default function EnterpriseGate({ description }: Props) {
   return (
     <div className="flex-1 flex items-center justify-center p-12">
       <div className="bg-white dark:bg-[#11111b] border border-slate-200 dark:border-[#272737] rounded-2xl p-10 text-center max-w-md shadow-lg">

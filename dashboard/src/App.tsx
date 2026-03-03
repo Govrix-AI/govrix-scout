@@ -43,7 +43,7 @@ export default function App() {
               <Route
                 key={path}
                 path={path}
-                element={<EnterpriseGate feature={path} description={description} />}
+                element={<EnterpriseGate description={description} />}
               />
             ))}
             <Route path="*" element={<Navigate to="/overview" replace />} />

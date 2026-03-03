@@ -24,7 +24,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>
 }
 
-function buildParams(filters: Record<string, string | number | boolean | undefined>): string {
+type QueryParams = Record<string, string | number | boolean | undefined | null>
+
+function buildParams(filters: QueryParams): string {
   const p = new URLSearchParams()
   for (const [k, v] of Object.entries(filters)) {
     if (v !== undefined && v !== null) p.set(k, String(v))
@@ -38,7 +40,7 @@ export const getHealth = () => request<HealthResponse>('/health')
 
 // Events
 export const getEvents = (filters: EventFilters = {}) =>
-  request<PaginatedResponse<AgentEvent>>(`/api/v1/events${buildParams(filters as Record<string, string | number | boolean | undefined>)}`)
+  request<PaginatedResponse<AgentEvent>>(`/api/v1/events${buildParams(filters)}`)
 export const getEvent = (id: string) =>
   request<AgentEvent>(`/api/v1/events/${id}`)
 export const getSessionEvents = (sessionId: string) =>
@@ -54,7 +56,7 @@ export const updateAgent = (id: string, body: Partial<Pick<Agent, 'name' | 'stat
 export const retireAgent = (id: string) =>
   request<void>(`/api/v1/agents/${id}/retire`, { method: 'POST' })
 export const getAgentEvents = (id: string, filters: EventFilters = {}) =>
-  request<PaginatedResponse<AgentEvent>>(`/api/v1/agents/${id}/events${buildParams(filters as Record<string, string | number | boolean | undefined>)}`)
+  request<PaginatedResponse<AgentEvent>>(`/api/v1/agents/${id}/events${buildParams(filters)}`)
 
 // Costs
 export const getCostSummary = () =>
