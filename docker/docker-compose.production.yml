@@ -36,7 +36,7 @@ services:
 
   # ── Govrix Scout Proxy + API ──────────────────────────────────────────────────
   proxy:
-    image: ghcr.io/govrixai/govrix-scout:latest
+    image: ghcr.io/manaspros/govrix-scout:latest
     container_name: govrix-scout-proxy
     restart: unless-stopped
     depends_on:
@@ -61,7 +61,7 @@ services:
 
   # ── Dashboard (React + Vite) ──────────────────────────────────────────────────
   dashboard:
-    image: ghcr.io/govrixai/govrix-scout-dashboard:latest
+    image: ghcr.io/manaspros/govrix-scout-dashboard:latest
     container_name: govrix-scout-dashboard
     restart: unless-stopped
     depends_on:
@@ -70,6 +70,6 @@ services:
     environment:
       VITE_API_BASE_URL: http://localhost:${GOVRIX_API_PORT:-4001}
     ports:
-      - "${GOVRIX_DASHBOARD_PORT:-3000}:80"
+      - "${GOVRIX_DASHBOARD_PORT:-3000}:3000"
     networks:
       - govrix-scout

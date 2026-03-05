@@ -49,7 +49,7 @@ function Write-Warn    { param([string]$Msg) Write-Host "[govrix] WARN: $Msg" -F
 function Write-Fail    {
     param([string]$Msg)
     Write-Host "[govrix] ERROR: $Msg" -ForegroundColor Red
-    exit 1
+    throw "Installation failed: $Msg"
 }
 
 function Write-Separator { Write-Host ("=" * 63) }
@@ -258,9 +258,7 @@ POSTGRES_DB=govrix
 POSTGRES_PASSWORD=$dbPass
 
 GOVRIX_API_KEY=$apiKey
-GOVRIX_DATABASE__URL=postgres://govrix:${dbPass}@postgres:5432/govrix
-GOVRIX_DATABASE__MAX_CONNECTIONS=20
-GOVRIX_DATABASE__MIN_CONNECTIONS=2
+GOVRIX_STORE__DATABASE_URL=postgresql://govrix:${dbPass}@postgres:5432/govrix
 
 GOVRIX_PROXY__LISTEN_ADDR=0.0.0.0:4000
 GOVRIX_API__LISTEN_ADDR=0.0.0.0:4001
@@ -418,8 +416,15 @@ function Install-Dev {
 # =============================================================================
 # Entrypoint
 # =============================================================================
-if ($Dev) {
-    Install-Dev
-} else {
-    Install-User
+try {
+    if ($Dev) {
+        Install-Dev
+    } else {
+        Install-User
+    }
+} catch {
+    Write-Host ""
+    Write-Host "[govrix] Installation aborted: $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host "[govrix] If the error persists, please open an issue: $REPO_URL/issues" -ForegroundColor Yellow
+    Write-Host ""
 }
