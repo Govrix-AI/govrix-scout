@@ -23,7 +23,7 @@
 </p>
 
 <p align="center">
-  Built with ❤️ by <a href="https://github.com/jaiswal-naman"><b>Naman</b></a> & <a href="https://github.com/manaspros"><b>Manas</b></a>
+  Built with ❤️ by <a href="https://github.com/manaspros"><b>Manas</b></a>
 </p>
 
 <p align="center">
@@ -663,3 +663,7 @@ make dev               # start everything with hot-reload
 <p align="center">
   <a href="https://github.com/Govrix-AI/govrix-scout">⭐ Star on GitHub</a> · <a href="https://github.com/Govrix-AI/govrix-scout/issues">🐛 Report Bug</a> · <a href="https://github.com/Govrix-AI/govrix-scout/issues">💡 Request Feature</a> · <a href="CONTRIBUTING.md">🤝 Contribute</a>
 </p>
+
+---
+
+> The initial README and documentation structure were drafted by a former co-founder. Due to misalignment, Govrix Scout is now solely built and maintained by [Manas](https://github.com/manaspros).
