@@ -136,9 +136,7 @@ pub async fn delete_agent_budget(
 /// Get budget overview for all agents.
 ///
 /// GET /api/v1/budgets/overview
-pub async fn budget_overview(
-    State(state): State<Arc<AppState>>,
-) -> impl IntoResponse {
+pub async fn budget_overview(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     match govrix_scout_store::budget::get_budget_overview(&state.pool).await {
         Ok(rows) => {
             let total = rows.len();
@@ -154,7 +152,9 @@ pub async fn budget_overview(
             tracing::error!("budget_overview store error: {}", e);
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "error": "failed to fetch budget overview", "detail": e.to_string() })),
+                Json(
+                    json!({ "error": "failed to fetch budget overview", "detail": e.to_string() }),
+                ),
             )
         }
     }

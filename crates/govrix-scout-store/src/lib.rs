@@ -25,7 +25,10 @@ pub use events::EventFilter;
 
 // Re-export commonly used store functions so callers don't need to know sub-modules
 pub use agents::{get_agent, list_agents, retire_agent, update_agent_metadata, upsert_agent};
-pub use events::{get_agent_runs, get_agent_violations, get_event, get_events_for_agent, get_session_events, list_events};
+pub use events::{
+    get_agent_runs, get_agent_violations, get_event, get_events_for_agent, get_session_events,
+    list_events,
+};
 
 // Cost query types
 pub use costs::{CostBreakdownRow, CostSummary, Granularity, GroupBy};

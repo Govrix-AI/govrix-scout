@@ -166,13 +166,20 @@ fn infer_provider(model: &str) -> String {
     }
 
     // Infer from model name substrings.
-    if lower.contains("gpt") || lower.starts_with("o1") || lower.starts_with("o3") || lower.starts_with("o4") {
+    if lower.contains("gpt")
+        || lower.starts_with("o1")
+        || lower.starts_with("o3")
+        || lower.starts_with("o4")
+    {
         "openai".into()
     } else if lower.contains("claude") {
         "anthropic".into()
     } else if lower.contains("gemini") {
         "google".into()
-    } else if lower.contains("mistral") || lower.contains("codestral") || lower.contains("ministral") {
+    } else if lower.contains("mistral")
+        || lower.contains("codestral")
+        || lower.contains("ministral")
+    {
         "mistral".into()
     } else if lower.contains("llama") {
         "meta".into()
@@ -483,10 +490,7 @@ mod tests {
     fn stripped_aliases_populated() {
         // Many models have provider prefixes, so stripped aliases should exist.
         let count = stripped_alias_count();
-        assert!(
-            count > 500,
-            "expected 500+ stripped aliases, got {count}"
-        );
+        assert!(count > 500, "expected 500+ stripped aliases, got {count}");
     }
 
     #[test]

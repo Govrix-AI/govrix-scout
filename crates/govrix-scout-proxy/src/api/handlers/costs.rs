@@ -187,7 +187,9 @@ pub async fn cost_timeseries(
             tracing::error!("cost_timeseries store error: {}", e);
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "error": "failed to fetch cost timeseries", "detail": e.to_string() })),
+                Json(
+                    json!({ "error": "failed to fetch cost timeseries", "detail": e.to_string() }),
+                ),
             )
         }
     }

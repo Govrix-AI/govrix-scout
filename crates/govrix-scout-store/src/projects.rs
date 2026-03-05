@@ -69,9 +69,7 @@ pub async fn get_project(
 }
 
 /// List all projects with agent count and total cost.
-pub async fn list_projects(
-    pool: &StorePool,
-) -> Result<Vec<serde_json::Value>, sqlx::Error> {
+pub async fn list_projects(pool: &StorePool) -> Result<Vec<serde_json::Value>, sqlx::Error> {
     use sqlx::Row;
 
     let rows = sqlx::query(

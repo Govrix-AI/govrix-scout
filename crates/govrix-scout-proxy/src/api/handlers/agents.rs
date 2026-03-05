@@ -317,7 +317,9 @@ pub async fn get_agent_violations(
             tracing::error!("get_agent_violations store error: {}", e);
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "error": "failed to fetch agent violations", "detail": e.to_string() })),
+                Json(
+                    json!({ "error": "failed to fetch agent violations", "detail": e.to_string() }),
+                ),
             )
         }
     }

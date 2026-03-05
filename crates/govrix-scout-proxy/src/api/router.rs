@@ -137,8 +137,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         // ── Projects ─────────────────────────────────────────────────────
         .route(
             "/api/v1/projects",
-            get(handlers::projects::list_projects)
-                .post(handlers::projects::create_project),
+            get(handlers::projects::list_projects).post(handlers::projects::create_project),
         )
         .route(
             "/api/v1/projects/{id}",
@@ -263,14 +262,27 @@ pub fn build_router() -> Router {
         .route("/api/v1/costs/timeseries", get(stub_list))
         .route(
             "/api/v1/agents/{id}/budget",
-            get(stub_list).put(stub_not_implemented).delete(stub_not_implemented),
+            get(stub_list)
+                .put(stub_not_implemented)
+                .delete(stub_not_implemented),
         )
         .route("/api/v1/budgets/overview", get(stub_list))
-        .route("/api/v1/projects", get(stub_list).post(stub_not_implemented))
-        .route("/api/v1/projects/{id}", get(stub_item).put(stub_not_implemented).delete(stub_not_implemented))
+        .route(
+            "/api/v1/projects",
+            get(stub_list).post(stub_not_implemented),
+        )
+        .route(
+            "/api/v1/projects/{id}",
+            get(stub_item)
+                .put(stub_not_implemented)
+                .delete(stub_not_implemented),
+        )
         .route("/api/v1/projects/{id}/agents", get(stub_list))
         .route("/api/v1/projects/{id}/costs", get(stub_cost_summary))
-        .route("/api/v1/agents/{id}/project", axum::routing::put(stub_not_implemented))
+        .route(
+            "/api/v1/agents/{id}/project",
+            axum::routing::put(stub_not_implemented),
+        )
         .route("/api/v1/reports/types", get(handlers::reports::list_types))
         .route("/api/v1/reports", get(handlers::reports::list_reports))
         .route(

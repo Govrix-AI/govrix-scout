@@ -182,9 +182,7 @@ pub async fn get_budget_config(
 }
 
 /// List all budget configs.
-pub async fn list_budget_configs(
-    pool: &StorePool,
-) -> Result<Vec<BudgetConfigRow>, sqlx::Error> {
+pub async fn list_budget_configs(pool: &StorePool) -> Result<Vec<BudgetConfigRow>, sqlx::Error> {
     use sqlx::Row;
 
     let rows = sqlx::query(
@@ -246,10 +244,7 @@ pub async fn upsert_budget_config(
 }
 
 /// Delete a budget config for an agent.
-pub async fn delete_budget_config(
-    pool: &StorePool,
-    agent_id: &str,
-) -> Result<bool, sqlx::Error> {
+pub async fn delete_budget_config(pool: &StorePool, agent_id: &str) -> Result<bool, sqlx::Error> {
     let result = sqlx::query("DELETE FROM budget_config WHERE agent_id = $1")
         .bind(agent_id)
         .execute(pool)
@@ -258,9 +253,7 @@ pub async fn delete_budget_config(
 }
 
 /// Get budget overview -- all agents with their config + today's usage.
-pub async fn get_budget_overview(
-    pool: &StorePool,
-) -> Result<Vec<serde_json::Value>, sqlx::Error> {
+pub async fn get_budget_overview(pool: &StorePool) -> Result<Vec<serde_json::Value>, sqlx::Error> {
     use sqlx::Row;
 
     let rows = sqlx::query(
