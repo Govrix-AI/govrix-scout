@@ -666,4 +666,4 @@ make dev               # start everything with hot-reload
 
 ---
 
-> The initial README and documentation structure were drafted by a former co-founder. Due to misalignment, Govrix Scout is now solely built and maintained by [Manas](https://github.com/manaspros).
+> The initial README and documentation were drafted during an early collaboration that did not continue. Govrix Scout is now solely built and maintained by [Manas](https://github.com/manaspros).
