@@ -216,12 +216,28 @@ function Install-User {
     } else {
         Write-Info "Downloading docker-compose.yml..."
         try {
-            Invoke-WebRequest -Uri "$REPO_RAW_BASE/docker/docker-compose.yml" `
+            Invoke-WebRequest -Uri "$REPO_RAW_BASE/docker/docker-compose.production.yml" `
                               -OutFile $composeDest `
                               -UseBasicParsing
             Write-Success "docker-compose.yml downloaded"
         } catch {
             Write-Fail "Failed to download docker-compose.yml: $_"
+        }
+    }
+
+    # Download database initialization script
+    $initDest = Join-Path $GovrixDir "init-combined.sql"
+    if (Test-Path $initDest) {
+        Write-Info "init-combined.sql already exists — keeping"
+    } else {
+        Write-Info "Downloading database initialization script..."
+        try {
+            Invoke-WebRequest -Uri "$REPO_RAW_BASE/docker/init-combined.sql" `
+                              -OutFile $initDest `
+                              -UseBasicParsing
+            Write-Success "init-combined.sql downloaded"
+        } catch {
+            Write-Fail "Failed to download init-combined.sql: $_"
         }
     }
 

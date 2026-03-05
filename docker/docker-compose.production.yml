@@ -1,0 +1,77 @@
+version: '3.9'
+
+# ── Volumes ───────────────────────────────────────────────────────────────────
+volumes:
+  pgdata:
+    driver: local
+
+# ── Networks ──────────────────────────────────────────────────────────────────
+networks:
+  govrix-scout:
+    driver: bridge
+
+# ── Services ──────────────────────────────────────────────────────────────────
+services:
+
+  # ── PostgreSQL + TimescaleDB ───────────────────────────────────────────────
+  postgres:
+    image: timescale/timescaledb:latest-pg16
+    container_name: govrix-scout-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-govrix}
+      POSTGRES_USER: ${POSTGRES_USER:-govrix}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-govrix_scout_dev}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./init-combined.sql:/docker-entrypoint-initdb.d/001-init.sql:ro
+    networks:
+      - govrix-scout
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-govrix} -d ${POSTGRES_DB:-govrix}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ── Govrix Scout Proxy + API ──────────────────────────────────────────────────
+  proxy:
+    image: ghcr.io/govrix-ai/govrix-scout:latest
+    container_name: govrix-scout-proxy
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      GOVRIX_STORE__DATABASE_URL: postgresql://${POSTGRES_USER:-govrix}:${POSTGRES_PASSWORD:-govrix_scout_dev}@postgres:5432/${POSTGRES_DB:-govrix}
+      GOVRIX_PROXY__LISTEN_PORT: ${GOVRIX_PROXY_PORT:-4000}
+      GOVRIX_API_KEY: ${GOVRIX_API_KEY}
+      RUST_LOG: ${RUST_LOG:-govrix_scout_proxy=info}
+    ports:
+      - "${GOVRIX_PROXY_PORT:-4000}:4000"  # Proxy port
+      - "${GOVRIX_API_PORT:-4001}:4001"    # Management API
+    networks:
+      - govrix-scout
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ── Dashboard (React + Vite) ──────────────────────────────────────────────────
+  dashboard:
+    image: ghcr.io/govrix-ai/govrix-scout-dashboard:latest
+    container_name: govrix-scout-dashboard
+    restart: unless-stopped
+    depends_on:
+      proxy:
+        condition: service_healthy
+    environment:
+      VITE_API_BASE_URL: http://localhost:${GOVRIX_API_PORT:-4001}
+    ports:
+      - "${GOVRIX_DASHBOARD_PORT:-3000}:80"
+    networks:
+      - govrix-scout
