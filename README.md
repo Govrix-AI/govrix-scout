@@ -15,7 +15,7 @@
 <br/>
 
 <p align="center">
-  <b>⭐️ If you find Govrix Scout useful, <a href="https://github.com/manaspros/govrix-scout">please consider giving us a star!</a> It helps the open-source project grow. ⭐️</b>
+  <b>⭐️ If you find Govrix Scout useful, <a href="https://github.com/GovrixAI/govrix-scout">please consider giving us a star!</a> It helps the open-source project grow. ⭐️</b>
 </p>
 
 <p align="center">
@@ -23,9 +23,9 @@
 </p>
 
 <p align="center">
-  <a href="https://x.com/govrix"><img src="https://img.shields.io/badge/X%20(Twitter)-black?style=flat-square&logo=x&logoColor=white" alt="X (Twitter)" /></a>
-  <a href="https://linkedin.com/company/govrix"><img src="https://img.shields.io/badge/LinkedIn-0A66C2?style=flat-square&logo=linkedin&logoColor=white" alt="LinkedIn" /></a>
-  <a href="https://discord.gg/govrix"><img src="https://img.shields.io/badge/Discord-5865F2?style=flat-square&logo=discord&logoColor=white" alt="Discord" /></a>
+  <a href="https://x.com/govrixai"><img src="https://img.shields.io/badge/X%20(Twitter)-black?style=flat-square&logo=x&logoColor=white" alt="X (Twitter)" /></a>
+  <a href="http://linkedin.com/company/govrix"><img src="https://img.shields.io/badge/LinkedIn-0A66C2?style=flat-square&logo=linkedin&logoColor=white" alt="LinkedIn" /></a>
+  <a href="https://discord.gg/kYa8SqQd"><img src="https://img.shields.io/badge/Discord-5865F2?style=flat-square&logo=discord&logoColor=white" alt="Discord" /></a>
 </p>
 
 <p align="center">
@@ -40,15 +40,14 @@
   <a href="https://govrix.dev"><b>Website</b></a> ·
   <a href="https://docs.govrix.dev"><b>Docs</b></a> ·
   <a href="#-quick-start"><b>Getting Started</b></a> ·
-  <a href="https://github.com/manaspros/govrix-scout/issues"><b>Issues</b></a> ·
+  <a href="https://github.com/GovrixAI/govrix-scout/issues"><b>Issues</b></a> ·
   <a href="#-govrix-platform-enterprise"><b>Enterprise</b></a>
 </p>
 
 <br/>
 
 <p align="center">
-  <!-- TODO: Add a real screenshot of your dashboard and save it to docs/assets/demo.png -->
-  <img src="docs/assets/demo.png" alt="Govrix Scout Dashboard Demo" width="800" />
+  <img src="imgonline-com-ua-GIF-animation-2aVXJx6VtOK.gif" alt="Govrix Scout Dashboard Demo" width="800" />
 </p>
 
 ---
@@ -132,13 +131,13 @@ Now every AI call is automatically **logged**, **costed**, **scanned for PII**, 
 curl -sSL https://govrix.dev/install.sh | bash
 
 # Windows (PowerShell as Admin)
-iwr -useb https://raw.githubusercontent.com/manaspros/govrix-scout/main/install.ps1 | iex
+iwr -useb https://raw.githubusercontent.com/GovrixAI/govrix-scout/main/install.ps1 | iex
 ```
 
 ### Option B: Clone & Run
 
 ```bash
-git clone https://github.com/manaspros/govrix-scout.git
+git clone https://github.com/GovrixAI/govrix-scout.git
 cd govrix-scout
 docker compose -f docker/docker-compose.yml up -d
 ```
@@ -495,7 +494,7 @@ rustc --version && cargo --version && node --version && pnpm --version && docker
 
 ```bash
 # 1. Clone
-git clone https://github.com/manaspros/govrix-scout.git
+git clone https://github.com/GovrixAI/govrix-scout.git
 cd govrix-scout
 
 # 2. Start the database
@@ -658,5 +657,5 @@ make dev               # start everything with hot-reload
 ---
 
 <p align="center">
-  <a href="https://github.com/manaspros/govrix-scout">⭐ Star on GitHub</a> · <a href="https://github.com/manaspros/govrix-scout/issues">🐛 Report Bug</a> · <a href="https://github.com/manaspros/govrix-scout/issues">💡 Request Feature</a> · <a href="CONTRIBUTING.md">🤝 Contribute</a>
+  <a href="https://github.com/GovrixAI/govrix-scout">⭐ Star on GitHub</a> · <a href="https://github.com/GovrixAI/govrix-scout/issues">🐛 Report Bug</a> · <a href="https://github.com/GovrixAI/govrix-scout/issues">💡 Request Feature</a> · <a href="CONTRIBUTING.md">🤝 Contribute</a>
 </p>

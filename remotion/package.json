@@ -1,0 +1,24 @@
+{
+  "name": "govrix-launch-video",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "npx remotion studio",
+    "build": "npx remotion render GovrixLaunchVideo out/launch-video.mp4",
+    "upgrade": "npx remotion upgrade"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.433",
+    "@remotion/google-fonts": "4.0.433",
+    "@remotion/media": "4.0.433",
+    "@remotion/transitions": "4.0.433",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "remotion": "4.0.433",
+    "typescript": "^5.7.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0"
+  }
+}

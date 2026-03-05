@@ -1,17 +1,17 @@
 # Govrix Scout Dashboard
 
-A React + Vite dashboard for [Govrix Scout](https://github.com/manaspros/govrix-scout) — open-source AI agent observability.
+A React + Vite dashboard for [Govrix Scout](https://github.com/GovrixAI/govrix-scout) — open-source AI agent observability.
 
 ## Pages
 
-| Route | Description |
-|---|---|
-| `/overview` | Stat cards (agents, events, cost, latency), requests chart, recent events |
-| `/agents` | Filterable agents table with expandable detail rows |
-| `/events` | Events table with time range filter, auto-refresh, and slide-out detail drawer |
-| `/costs` | Daily cost chart, breakdown by agent / model / protocol |
-| `/reports` | Generate and download compliance reports |
-| `/settings` | Connection status, Scout version, proxy config display |
+| Route       | Description                                                                    |
+| ----------- | ------------------------------------------------------------------------------ |
+| `/overview` | Stat cards (agents, events, cost, latency), requests chart, recent events      |
+| `/agents`   | Filterable agents table with expandable detail rows                            |
+| `/events`   | Events table with time range filter, auto-refresh, and slide-out detail drawer |
+| `/costs`    | Daily cost chart, breakdown by agent / model / protocol                        |
+| `/reports`  | Generate and download compliance reports                                       |
+| `/settings` | Connection status, Scout version, proxy config display                         |
 
 ## Tech Stack
 
@@ -48,20 +48,20 @@ pnpm preview    # preview the production build locally
 
 ## API Endpoints Used
 
-| Endpoint | Purpose |
-|---|---|
-| `GET /api/v1/agents` | Agent list + stats |
-| `GET /api/v1/events` | Event stream with filtering |
-| `GET /api/v1/costs/summary` | Cost totals |
-| `GET /api/v1/costs/breakdown` | Cost by agent / model / protocol |
-| `GET /api/v1/reports/types` | Available report types |
-| `GET /api/v1/reports` | Generated report list |
-| `POST /api/v1/reports/generate` | Trigger report generation |
-| `GET /api/v1/config` | Server configuration |
-| `GET /health` | Server health + version |
+| Endpoint                        | Purpose                          |
+| ------------------------------- | -------------------------------- |
+| `GET /api/v1/agents`            | Agent list + stats               |
+| `GET /api/v1/events`            | Event stream with filtering      |
+| `GET /api/v1/costs/summary`     | Cost totals                      |
+| `GET /api/v1/costs/breakdown`   | Cost by agent / model / protocol |
+| `GET /api/v1/reports/types`     | Available report types           |
+| `GET /api/v1/reports`           | Generated report list            |
+| `POST /api/v1/reports/generate` | Trigger report generation        |
+| `GET /api/v1/config`            | Server configuration             |
+| `GET /health`                   | Server health + version          |
 
 ## Environment Variables
 
-| Variable | Default | Description |
-|---|---|---|
+| Variable       | Default            | Description                          |
+| -------------- | ------------------ | ------------------------------------ |
 | `VITE_API_URL` | `""` (same-origin) | Override API base URL for production |

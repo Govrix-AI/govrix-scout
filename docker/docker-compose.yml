@@ -52,7 +52,7 @@ services:
       GOVRIX_PROXY_PORT: "4000"
       GOVRIX_API_PORT: "4001"
       RUST_LOG: "govrix_scout_proxy=info,tower_http=debug"
-      GOVRIX_PROXY__UPSTREAM_OPENAI: "https://aigateway.atlan.dev"
+      GOVRIX_PROXY__UPSTREAM_OPENAI: "https://api.openai.com"
     ports:
       - "4000:4000"   # Proxy (hot path)
       - "4001:4001"   # REST API
