@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, type ReactNode } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, NavLink, Outlet, useLocation } from 'react-router-dom'
 import {
-  LayoutDashboard, Radio, Bot, DollarSign, FileText,
+  LayoutDashboard, Radio, Bot, DollarSign, FileText, Wallet, FolderOpen,
   ChevronRight, Search, Moon, Sun,
 } from 'lucide-react'
 import { useHealth } from './api/hooks'
@@ -9,8 +9,12 @@ import { useHealth } from './api/hooks'
 import OverviewPage from './pages/OverviewPage'
 import EventsPage from './pages/EventsPage'
 import AgentsPage from './pages/AgentsPage'
+import AgentDetailPage from './pages/AgentDetailPage'
 import CostsPage from './pages/CostsPage'
+import BudgetsPage from './pages/BudgetsPage'
 import ReportsPage from './pages/ReportsPage'
+import ProjectsPage from './pages/ProjectsPage'
+import ProjectDetailPage from './pages/ProjectDetailPage'
 
 /* ── Auth Context ──────────────────────────────────────────────── */
 interface AuthContextValue {
@@ -62,7 +66,9 @@ const navItems: NavItem[] = [
   { name: 'Events',    to: '/events',   icon: Radio },
   { name: 'Agents',    to: '/agents',   icon: Bot },
   { name: 'Costs',     to: '/costs',    icon: DollarSign },
+  { name: 'Budgets',   to: '/budgets',  icon: Wallet },
   { name: 'Reports',   to: '/reports',  icon: FileText },
+  { name: 'Projects',  to: '/projects', icon: FolderOpen },
 ]
 
 /* ── Sidebar ───────────────────────────────────────────────────── */
@@ -195,8 +201,12 @@ export default function App() {
             <Route path="overview" element={<OverviewPage />} />
             <Route path="events"   element={<EventsPage />} />
             <Route path="agents"   element={<AgentsPage />} />
+            <Route path="agents/:id" element={<AgentDetailPage />} />
             <Route path="costs"    element={<CostsPage />} />
+            <Route path="budgets"  element={<BudgetsPage />} />
             <Route path="reports"  element={<ReportsPage />} />
+            <Route path="projects"    element={<ProjectsPage />} />
+            <Route path="projects/:id" element={<ProjectDetailPage />} />
             <Route path="*"        element={<Navigate to="/overview" replace />} />
           </Route>
         </Routes>

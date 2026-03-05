@@ -3,10 +3,10 @@
 #
 # Usage:
 #   # End-user (Docker only, no Rust/Node needed):
-#   curl -sSfL https://raw.githubusercontent.com/govrix/govrix-scout/main/install.sh | sh
+#   curl -sSfL https://govrix.dev/install.sh | sh
 #
 #   # Contributor (full dev setup):
-#   curl -sSfL https://raw.githubusercontent.com/govrix/govrix-scout/main/install.sh | sh -s -- --dev
+#   curl -sSfL https://govrix.dev/install.sh | sh -s -- --dev
 #
 #   # Or, after cloning:
 #   ./install.sh          # Docker-only
@@ -17,8 +17,8 @@ set -euo pipefail
 
 # ── Config ────────────────────────────────────────────────────────────────────
 GOVRIX_DIR="${GOVRIX_DIR:-$HOME/.govrix}"
-REPO_RAW_BASE="https://raw.githubusercontent.com/govrix/govrix-scout/main"
-REPO_URL="https://github.com/govrix/govrix-scout"
+REPO_RAW_BASE="https://govrix.dev"
+REPO_URL="https://github.com/manaspros/govrix-scout"
 MODE="user"
 
 # ── Colors (disabled if not a terminal) ──────────────────────────────────────
@@ -195,8 +195,26 @@ install_user() {
         info "docker-compose.yml already exists — keeping"
     else
         info "Downloading docker-compose.yml..."
-        download "$REPO_RAW_BASE/docker/docker-compose.yml" "$compose_dest"
+        download "$REPO_RAW_BASE/docker-compose.yml" "$compose_dest"
         success "docker-compose.yml downloaded"
+    fi
+
+    # Download database init SQL files
+    local init_dir="$GOVRIX_DIR/init"
+    mkdir -p "$init_dir"
+    local sql_files="001_create_events.sql 002_create_agents.sql 003_create_costs.sql 004_create_hypertables.sql 005_create_indexes.sql 006_budget_daily.sql 007_budget_config.sql 008_create_projects.sql"
+    local needs_sql=0
+    for f in $sql_files; do
+        [ ! -f "$init_dir/$f" ] && needs_sql=1 && break
+    done
+    if [ "$needs_sql" -eq 1 ]; then
+        info "Downloading database migrations..."
+        for f in $sql_files; do
+            download "$REPO_RAW_BASE/init/$f" "$init_dir/$f"
+        done
+        success "Database migrations downloaded"
+    else
+        info "Database migrations already present — keeping"
     fi
 
     # Generate .env with secure random credentials

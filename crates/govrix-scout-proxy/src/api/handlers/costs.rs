@@ -44,6 +44,19 @@ pub struct CostBreakdownParams {
     pub group_by: Option<String>,
 }
 
+/// Query parameters for GET /api/v1/costs/timeseries
+#[derive(Debug, Deserialize)]
+pub struct CostTimeseriesParams {
+    /// ISO-8601 start of range (default: 7 days ago)
+    pub from: Option<DateTime<Utc>>,
+    /// ISO-8601 end of range (default: now)
+    pub to: Option<DateTime<Utc>>,
+    /// Time bucket granularity: hour, day, week, month (default: day)
+    pub granularity: Option<String>,
+    /// Optional agent_id filter
+    pub agent_id: Option<String>,
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 fn parse_granularity(s: &str) -> Granularity {
@@ -128,6 +141,53 @@ pub async fn cost_breakdown(
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({ "error": "failed to fetch cost breakdown", "detail": e.to_string() })),
+            )
+        }
+    }
+}
+
+/// Return time-series cost data for charting.
+///
+/// GET /api/v1/costs/timeseries
+pub async fn cost_timeseries(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<CostTimeseriesParams>,
+) -> impl IntoResponse {
+    let now = Utc::now();
+    let to = params.to.unwrap_or(now);
+    let from = params.from.unwrap_or_else(|| to - Duration::days(7));
+    let granularity = params
+        .granularity
+        .as_deref()
+        .map(parse_granularity)
+        .unwrap_or(Granularity::Day);
+
+    match govrix_scout_store::costs::get_cost_timeseries(
+        &state.pool,
+        from,
+        to,
+        granularity,
+        params.agent_id.as_deref(),
+    )
+    .await
+    {
+        Ok(buckets) => {
+            let total = buckets.len();
+            (
+                StatusCode::OK,
+                Json(json!({
+                    "data": buckets,
+                    "total": total,
+                    "from": from.to_rfc3339(),
+                    "to": to.to_rfc3339(),
+                })),
+            )
+        }
+        Err(e) => {
+            tracing::error!("cost_timeseries store error: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "failed to fetch cost timeseries", "detail": e.to_string() })),
             )
         }
     }

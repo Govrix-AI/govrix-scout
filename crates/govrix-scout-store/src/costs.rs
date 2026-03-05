@@ -84,7 +84,7 @@ pub async fn get_cost_summary(
             COUNT(*)                                                    AS total_requests,
             COALESCE(SUM(input_tokens),  0)                             AS total_input_tokens,
             COALESCE(SUM(output_tokens), 0)                             AS total_output_tokens,
-            COALESCE(SUM(cost_usd),      0.0)                           AS total_cost_usd,
+            COALESCE(SUM(cost_usd),      0.0)::float8                    AS total_cost_usd,
             AVG(latency_ms)                                             AS avg_latency_ms,
             PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY latency_ms)    AS p99_latency_ms
         FROM events
@@ -138,7 +138,7 @@ pub async fn get_cost_breakdown(
             COUNT(*)                                                    AS request_count,
             COALESCE(SUM(input_tokens),  0)                             AS total_input_tokens,
             COALESCE(SUM(output_tokens), 0)                             AS total_output_tokens,
-            COALESCE(SUM(cost_usd),      0.0)                           AS total_cost_usd,
+            COALESCE(SUM(cost_usd),      0.0)::float8                    AS total_cost_usd,
             AVG(latency_ms)                                             AS avg_latency_ms
         FROM events
         WHERE timestamp >= $1
@@ -192,7 +192,7 @@ pub async fn get_cost_timeseries(
             SELECT
                 time_bucket('{interval}', timestamp)    AS bucket,
                 COUNT(*)                                AS request_count,
-                COALESCE(SUM(cost_usd), 0.0)            AS total_cost_usd,
+                COALESCE(SUM(cost_usd), 0.0)::float8    AS total_cost_usd,
                 COALESCE(SUM(total_tokens), 0)          AS total_tokens
             FROM events
             WHERE timestamp >= $1
@@ -209,7 +209,7 @@ pub async fn get_cost_timeseries(
             SELECT
                 time_bucket('{interval}', timestamp)    AS bucket,
                 COUNT(*)                                AS request_count,
-                COALESCE(SUM(cost_usd), 0.0)            AS total_cost_usd,
+                COALESCE(SUM(cost_usd), 0.0)::float8    AS total_cost_usd,
                 COALESCE(SUM(total_tokens), 0)          AS total_tokens
             FROM events
             WHERE timestamp >= $1

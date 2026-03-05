@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
+import { Link } from 'react-router-dom'
 import { Bot, RefreshCw } from 'lucide-react'
 import { useAgents, useRetireAgent, useUpdateAgent } from '../api/hooks'
 import type { Agent } from '../api/types'
@@ -110,7 +111,7 @@ export default function AgentsPage() {
                   className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors"
                 >
                   <td className="table-cell text-xs font-medium text-primary max-w-[180px] truncate">
-                    {a.id || '—'}
+                    <Link to={`/agents/${a.id}`} className="hover:underline">{a.id || '\u2014'}</Link>
                   </td>
                   <td className="table-cell text-xs text-slate-500">
                     {editingId === a.id ? (
@@ -144,17 +145,17 @@ export default function AgentsPage() {
                     {fmtNum(a.total_requests)}
                   </td>
                   <td className="table-cell text-xs metric-font text-right">
-                    {fmtNum(a.total_input_tokens)}
+                    {fmtNum(a.total_tokens_in)}
                   </td>
                   <td className="table-cell text-xs metric-font text-right">
-                    {fmtNum(a.total_output_tokens)}
+                    {fmtNum(a.total_tokens_out)}
                   </td>
                   <td className="table-cell text-xs metric-font text-right text-slate-600">
                     {fmtUsd(a.total_cost_usd)}
                   </td>
                   <td className="table-cell text-xs text-slate-400">
-                    {a.last_seen
-                      ? new Date(a.last_seen).toLocaleString([], {
+                    {a.last_seen_at
+                      ? new Date(a.last_seen_at).toLocaleString([], {
                           month: 'short',
                           day: 'numeric',
                           hour: '2-digit',

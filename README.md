@@ -112,7 +112,7 @@ Govrix Scout is a **transparent proxy** that sits between your AI agents and the
 
 **Linux / macOS:**
 ```bash
-curl -sSL https://raw.githubusercontent.com/manaspros/govrix-scout/main/install.sh | bash
+curl -sSL https://govrix.dev/install.sh | bash
 ```
 
 **Windows (PowerShell):**
@@ -126,7 +126,7 @@ Points all agent traffic through Govrix on `localhost:4000`. Dashboard at `http:
 
 ```bash
 # Linux / macOS
-curl -sSL https://raw.githubusercontent.com/manaspros/govrix-scout/main/install.sh | bash -s -- --dev
+curl -sSL https://govrix.dev/install.sh | bash -s -- --dev
 
 # Windows (PowerShell)
 .\install.ps1 -Dev

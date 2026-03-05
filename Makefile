@@ -1,4 +1,4 @@
-# AgentMesh — Build Orchestration
+# Govrix Scout — Build Orchestration
 # Usage: make <target>
 
 .PHONY: help setup dev test lint build clean fmt check docker-up docker-down
@@ -24,11 +24,11 @@ setup: ## First-time project setup
 # ── Development ───────────────────────────────────────────────────────────────
 dev: ## Start proxy + dashboard in watch mode
 	@echo "==> Starting development servers..."
-	$(CARGO) watch -x "run --bin agentmesh" &
+	$(CARGO) watch -x "run --bin govrix-scout" &
 	cd dashboard && $(PNPM) dev
 
 dev-proxy: ## Start only the proxy in watch mode
-	RUST_LOG=$(RUST_LOG) $(CARGO) watch -x "run --bin agentmesh"
+	RUST_LOG=$(RUST_LOG) $(CARGO) watch -x "run --bin govrix-scout"
 
 dev-dashboard: ## Start only the dashboard
 	cd dashboard && $(PNPM) dev
@@ -38,7 +38,7 @@ build: ## Build all crates in release mode
 	$(CARGO) build --release --workspace
 
 build-proxy: ## Build only the proxy binary
-	$(CARGO) build --release -p agentmesh-proxy
+	$(CARGO) build --release -p govrix-scout-proxy
 
 build-dashboard: ## Build dashboard for production
 	cd dashboard && $(PNPM) build
@@ -48,7 +48,7 @@ test: ## Run all Rust tests
 	$(CARGO) test --workspace
 
 test-proxy: ## Run proxy tests only
-	$(CARGO) test -p agentmesh-proxy
+	$(CARGO) test -p govrix-scout-proxy
 
 test-integration: ## Run integration tests (requires running postgres)
 	$(CARGO) test --test '*' -- --test-threads=1

@@ -61,7 +61,7 @@ pub async fn insert_event(pool: &StorePool, event: &AgentEvent) -> Result<(), sq
             timestamp, latency_ms,
             direction, method, upstream_target, provider, model,
             status_code, finish_reason, payload, raw_size_bytes,
-            input_tokens, output_tokens, total_tokens,
+            input_tokens, output_tokens, total_tokens, cost_usd,
             pii_detected, tools_called,
             lineage_hash, compliance_tag, tags, error_message,
             created_at
@@ -70,10 +70,10 @@ pub async fn insert_event(pool: &StorePool, event: &AgentEvent) -> Result<(), sq
             $4, $5,
             $6, $7, $8, $9, $10,
             $11, $12, $13, $14,
-            $15, $16, $17,
-            $18, $19,
-            $20, $21, $22, $23,
-            $24
+            $15, $16, $17, $18,
+            $19, $20,
+            $21, $22, $23, $24,
+            $25
         )
         "#,
     )
@@ -94,6 +94,7 @@ pub async fn insert_event(pool: &StorePool, event: &AgentEvent) -> Result<(), sq
     .bind(event.input_tokens)
     .bind(event.output_tokens)
     .bind(event.total_tokens)
+    .bind(event.cost_usd)
     .bind(&pii_json)
     .bind(&tools_json)
     .bind(&event.lineage_hash)
@@ -134,7 +135,7 @@ pub async fn insert_events_batch(
                 timestamp, latency_ms,
                 direction, method, upstream_target, provider, model,
                 status_code, finish_reason, payload, raw_size_bytes,
-                input_tokens, output_tokens, total_tokens,
+                input_tokens, output_tokens, total_tokens, cost_usd,
                 pii_detected, tools_called,
                 lineage_hash, compliance_tag, tags, error_message,
                 created_at
@@ -143,10 +144,10 @@ pub async fn insert_events_batch(
                 $4, $5,
                 $6, $7, $8, $9, $10,
                 $11, $12, $13, $14,
-                $15, $16, $17,
-                $18, $19,
-                $20, $21, $22, $23,
-                $24
+                $15, $16, $17, $18,
+                $19, $20,
+                $21, $22, $23, $24,
+                $25
             )
             "#,
         )
@@ -167,6 +168,7 @@ pub async fn insert_events_batch(
         .bind(event.input_tokens)
         .bind(event.output_tokens)
         .bind(event.total_tokens)
+        .bind(event.cost_usd)
         .bind(&pii_json)
         .bind(&tools_json)
         .bind(&event.lineage_hash)
@@ -478,6 +480,125 @@ pub async fn get_events_for_session(
     session_id: Uuid,
 ) -> Result<Vec<serde_json::Value>, sqlx::Error> {
     get_session_events(pool, session_id).await
+}
+
+/// Get agent runs (sessions) with aggregated metrics.
+///
+/// Groups events by session_id for a given agent, returning session-level
+/// metrics like total tokens, cost, and whether violations occurred.
+pub async fn get_agent_runs(
+    pool: &StorePool,
+    agent_id: &str,
+    limit: i64,
+) -> Result<Vec<serde_json::Value>, sqlx::Error> {
+    use sqlx::Row;
+
+    let sql = r#"
+        SELECT
+            session_id,
+            MIN(timestamp) AS started_at,
+            MAX(timestamp) AS ended_at,
+            COUNT(*) AS event_count,
+            MAX(model) AS model,
+            COALESCE(SUM(input_tokens), 0) AS total_input_tokens,
+            COALESCE(SUM(output_tokens), 0) AS total_output_tokens,
+            COALESCE(SUM(cost_usd), 0)::float8 AS total_cost_usd,
+            MAX(latency_ms) AS max_latency_ms,
+            MAX(status_code) AS status_code,
+            BOOL_OR(compliance_tag NOT IN ('pass:all', 'audit:none')) AS has_violations
+        FROM events
+        WHERE agent_id = $1
+        GROUP BY session_id
+        ORDER BY MIN(timestamp) DESC
+        LIMIT $2
+    "#;
+
+    let rows = sqlx::query(sql)
+        .bind(agent_id)
+        .bind(limit)
+        .fetch_all(pool)
+        .await?;
+
+    let result = rows
+        .into_iter()
+        .map(|r| {
+            serde_json::json!({
+                "session_id": r.try_get::<Uuid, _>("session_id").ok().map(|u| u.to_string()),
+                "started_at": r.try_get::<DateTime<Utc>, _>("started_at").ok().map(|t| t.to_rfc3339()),
+                "ended_at": r.try_get::<DateTime<Utc>, _>("ended_at").ok().map(|t| t.to_rfc3339()),
+                "event_count": r.try_get::<i64, _>("event_count").unwrap_or(0),
+                "model": r.try_get::<Option<String>, _>("model").ok().flatten(),
+                "total_input_tokens": r.try_get::<i64, _>("total_input_tokens").unwrap_or(0),
+                "total_output_tokens": r.try_get::<i64, _>("total_output_tokens").unwrap_or(0),
+                "total_cost_usd": r.try_get::<f64, _>("total_cost_usd").unwrap_or(0.0),
+                "max_latency_ms": r.try_get::<Option<i32>, _>("max_latency_ms").ok().flatten(),
+                "status_code": r.try_get::<Option<i32>, _>("status_code").ok().flatten(),
+                "has_violations": r.try_get::<Option<bool>, _>("has_violations").ok().flatten().unwrap_or(false),
+            })
+        })
+        .collect();
+
+    Ok(result)
+}
+
+/// Get violation events for a specific agent.
+///
+/// Returns events where compliance_tag indicates a warning or block.
+pub async fn get_agent_violations(
+    pool: &StorePool,
+    agent_id: &str,
+    limit: i64,
+) -> Result<Vec<serde_json::Value>, sqlx::Error> {
+    use sqlx::Row;
+
+    let sql = r#"
+        SELECT
+            id, session_id, agent_id,
+            timestamp, latency_ms,
+            direction, method, upstream_target, provider, model,
+            status_code, finish_reason, raw_size_bytes,
+            input_tokens, output_tokens, total_tokens, cost_usd,
+            pii_detected, tools_called,
+            lineage_hash, compliance_tag, tags, error_message,
+            created_at
+        FROM events
+        WHERE agent_id = $1
+          AND compliance_tag NOT IN ('pass:all', 'audit:none')
+        ORDER BY timestamp DESC
+        LIMIT $2
+    "#;
+
+    let rows = sqlx::query(sql)
+        .bind(agent_id)
+        .bind(limit)
+        .fetch_all(pool)
+        .await?;
+
+    let result = rows
+        .into_iter()
+        .map(|r| {
+            serde_json::json!({
+                "id": r.try_get::<Uuid, _>("id").ok().map(|u| u.to_string()),
+                "session_id": r.try_get::<Uuid, _>("session_id").ok().map(|u| u.to_string()),
+                "agent_id": r.try_get::<String, _>("agent_id").ok(),
+                "timestamp": r.try_get::<DateTime<Utc>, _>("timestamp").ok().map(|t| t.to_rfc3339()),
+                "latency_ms": r.try_get::<Option<i32>, _>("latency_ms").ok().flatten(),
+                "direction": r.try_get::<String, _>("direction").ok(),
+                "provider": r.try_get::<String, _>("provider").ok(),
+                "model": r.try_get::<Option<String>, _>("model").ok().flatten(),
+                "status_code": r.try_get::<Option<i32>, _>("status_code").ok().flatten(),
+                "input_tokens": r.try_get::<Option<i32>, _>("input_tokens").ok().flatten(),
+                "output_tokens": r.try_get::<Option<i32>, _>("output_tokens").ok().flatten(),
+                "cost_usd": r.try_get::<Option<f64>, _>("cost_usd").ok().flatten(),
+                "pii_detected": r.try_get::<Option<serde_json::Value>, _>("pii_detected").ok().flatten(),
+                "compliance_tag": r.try_get::<String, _>("compliance_tag").ok(),
+                "error_message": r.try_get::<Option<String>, _>("error_message").ok().flatten(),
+                "created_at": r.try_get::<DateTime<Utc>, _>("created_at").ok().map(|t| t.to_rfc3339()),
+            })
+        })
+        .collect();
+
+    Ok(result)
 }
 
 #[cfg(test)]

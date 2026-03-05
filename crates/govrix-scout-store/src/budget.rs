@@ -90,7 +90,7 @@ pub async fn get_global_budget_today(pool: &StorePool) -> Result<(i64, f64), sql
         r#"
         SELECT
             COALESCE(SUM(tokens_used), 0) AS total_tokens,
-            COALESCE(SUM(cost_usd),    0) AS total_cost
+            COALESCE(SUM(cost_usd),    0)::float8 AS total_cost
         FROM budget_daily
         WHERE date = CURRENT_DATE
         "#,
@@ -132,6 +132,173 @@ pub async fn list_budget_today(pool: &StorePool) -> Result<Vec<(String, i64, f64
         .collect();
 
     Ok(result)
+}
+
+// ── Budget Config CRUD ───────────────────────────────────────────────────────
+
+/// A row from the `budget_config` table.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct BudgetConfigRow {
+    pub agent_id: String,
+    pub daily_token_limit: Option<i64>,
+    pub daily_cost_limit_usd: Option<f64>,
+    pub monthly_cost_limit_usd: Option<f64>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
+}
+
+/// Get budget config for a single agent (or global `__global__`).
+pub async fn get_budget_config(
+    pool: &StorePool,
+    agent_id: &str,
+) -> Result<Option<BudgetConfigRow>, sqlx::Error> {
+    use sqlx::Row;
+
+    let row = sqlx::query(
+        "SELECT agent_id, daily_token_limit, daily_cost_limit_usd, monthly_cost_limit_usd, created_at, updated_at FROM budget_config WHERE agent_id = $1",
+    )
+    .bind(agent_id)
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(row.map(|r| BudgetConfigRow {
+        agent_id: r.try_get("agent_id").unwrap_or_default(),
+        daily_token_limit: r.try_get("daily_token_limit").ok(),
+        daily_cost_limit_usd: r
+            .try_get::<Option<f64>, _>("daily_cost_limit_usd")
+            .ok()
+            .flatten(),
+        monthly_cost_limit_usd: r
+            .try_get::<Option<f64>, _>("monthly_cost_limit_usd")
+            .ok()
+            .flatten(),
+        created_at: r
+            .try_get("created_at")
+            .unwrap_or_else(|_| chrono::Utc::now()),
+        updated_at: r
+            .try_get("updated_at")
+            .unwrap_or_else(|_| chrono::Utc::now()),
+    }))
+}
+
+/// List all budget configs.
+pub async fn list_budget_configs(
+    pool: &StorePool,
+) -> Result<Vec<BudgetConfigRow>, sqlx::Error> {
+    use sqlx::Row;
+
+    let rows = sqlx::query(
+        "SELECT agent_id, daily_token_limit, daily_cost_limit_usd, monthly_cost_limit_usd, created_at, updated_at FROM budget_config ORDER BY agent_id",
+    )
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|r| BudgetConfigRow {
+            agent_id: r.try_get("agent_id").unwrap_or_default(),
+            daily_token_limit: r.try_get("daily_token_limit").ok(),
+            daily_cost_limit_usd: r
+                .try_get::<Option<f64>, _>("daily_cost_limit_usd")
+                .ok()
+                .flatten(),
+            monthly_cost_limit_usd: r
+                .try_get::<Option<f64>, _>("monthly_cost_limit_usd")
+                .ok()
+                .flatten(),
+            created_at: r
+                .try_get("created_at")
+                .unwrap_or_else(|_| chrono::Utc::now()),
+            updated_at: r
+                .try_get("updated_at")
+                .unwrap_or_else(|_| chrono::Utc::now()),
+        })
+        .collect())
+}
+
+/// Upsert a budget config for an agent.
+pub async fn upsert_budget_config(
+    pool: &StorePool,
+    agent_id: &str,
+    daily_token_limit: Option<i64>,
+    daily_cost_limit_usd: Option<f64>,
+    monthly_cost_limit_usd: Option<f64>,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        r#"
+        INSERT INTO budget_config (agent_id, daily_token_limit, daily_cost_limit_usd, monthly_cost_limit_usd, updated_at)
+        VALUES ($1, $2, $3, $4, now())
+        ON CONFLICT (agent_id)
+        DO UPDATE SET
+            daily_token_limit = EXCLUDED.daily_token_limit,
+            daily_cost_limit_usd = EXCLUDED.daily_cost_limit_usd,
+            monthly_cost_limit_usd = EXCLUDED.monthly_cost_limit_usd,
+            updated_at = now()
+        "#,
+    )
+    .bind(agent_id)
+    .bind(daily_token_limit)
+    .bind(daily_cost_limit_usd)
+    .bind(monthly_cost_limit_usd)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// Delete a budget config for an agent.
+pub async fn delete_budget_config(
+    pool: &StorePool,
+    agent_id: &str,
+) -> Result<bool, sqlx::Error> {
+    let result = sqlx::query("DELETE FROM budget_config WHERE agent_id = $1")
+        .bind(agent_id)
+        .execute(pool)
+        .await?;
+    Ok(result.rows_affected() > 0)
+}
+
+/// Get budget overview -- all agents with their config + today's usage.
+pub async fn get_budget_overview(
+    pool: &StorePool,
+) -> Result<Vec<serde_json::Value>, sqlx::Error> {
+    use sqlx::Row;
+
+    let rows = sqlx::query(
+        r#"
+        SELECT
+            a.id AS agent_id,
+            a.name,
+            a.status,
+            bc.daily_token_limit,
+            bc.daily_cost_limit_usd,
+            bc.monthly_cost_limit_usd,
+            COALESCE(bd.tokens_used, 0) AS tokens_used_today,
+            COALESCE(bd.cost_usd, 0) AS cost_used_today
+        FROM agents a
+        LEFT JOIN budget_config bc ON a.id = bc.agent_id
+        LEFT JOIN budget_daily bd ON a.id = bd.agent_id AND bd.date = CURRENT_DATE
+        ORDER BY a.last_seen_at DESC
+        LIMIT 500
+        "#,
+    )
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|r| {
+            serde_json::json!({
+                "agent_id": r.try_get::<String, _>("agent_id").ok(),
+                "name": r.try_get::<Option<String>, _>("name").ok().flatten(),
+                "status": r.try_get::<String, _>("status").ok(),
+                "daily_token_limit": r.try_get::<Option<i64>, _>("daily_token_limit").ok().flatten(),
+                "daily_cost_limit_usd": r.try_get::<Option<f64>, _>("daily_cost_limit_usd").ok().flatten(),
+                "monthly_cost_limit_usd": r.try_get::<Option<f64>, _>("monthly_cost_limit_usd").ok().flatten(),
+                "tokens_used_today": r.try_get::<i64, _>("tokens_used_today").unwrap_or(0),
+                "cost_used_today": r.try_get::<f64, _>("cost_used_today").unwrap_or(0.0),
+            })
+        })
+        .collect())
 }
 
 // ── Unit tests (pure logic, no DB required) ───────────────────────────────────

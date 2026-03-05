@@ -3,7 +3,7 @@
 //! Route map (all on the management API port 4001):
 //!
 //! Dashboard
-//!   GET  /dashboard               ← minimal HTML dashboard (no JS build step)
+//!   GET  /dashboard               <- minimal HTML dashboard (no JS build step)
 //!
 //! Health
 //!   GET  /health
@@ -12,7 +12,7 @@
 //!
 //! Events
 //!   GET  /api/v1/events
-//!   GET  /api/v1/events/sessions/{session_id}   ← must come BEFORE /events/{id}
+//!   GET  /api/v1/events/sessions/{session_id}   <- must come BEFORE /events/{id}
 //!   GET  /api/v1/events/{id}
 //!
 //! Agents
@@ -25,6 +25,22 @@
 //! Costs
 //!   GET  /api/v1/costs/summary
 //!   GET  /api/v1/costs/breakdown
+//!
+//! Budgets
+//!   GET    /api/v1/agents/{id}/budget
+//!   PUT    /api/v1/agents/{id}/budget
+//!   DELETE /api/v1/agents/{id}/budget
+//!   GET    /api/v1/budgets/overview
+//!
+//! Projects
+//!   GET    /api/v1/projects
+//!   POST   /api/v1/projects
+//!   GET    /api/v1/projects/{id}
+//!   PUT    /api/v1/projects/{id}
+//!   DELETE /api/v1/projects/{id}
+//!   GET    /api/v1/projects/{id}/agents
+//!   GET    /api/v1/projects/{id}/costs
+//!   PUT    /api/v1/agents/{id}/project
 //!
 //! Reports
 //!   GET  /api/v1/reports/types
@@ -89,11 +105,58 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/api/v1/agents/{id}/events",
             get(handlers::agents::get_agent_events),
         )
+        .route(
+            "/api/v1/agents/{id}/runs",
+            get(handlers::agents::get_agent_runs),
+        )
+        .route(
+            "/api/v1/agents/{id}/violations",
+            get(handlers::agents::get_agent_violations),
+        )
         // ── Costs ──────────────────────────────────────────────────────────
         .route("/api/v1/costs/summary", get(handlers::costs::cost_summary))
         .route(
             "/api/v1/costs/breakdown",
             get(handlers::costs::cost_breakdown),
+        )
+        .route(
+            "/api/v1/costs/timeseries",
+            get(handlers::costs::cost_timeseries),
+        )
+        // ── Budgets ──────────────────────────────────────────────────────
+        .route(
+            "/api/v1/agents/{id}/budget",
+            get(handlers::budgets::get_agent_budget)
+                .put(handlers::budgets::set_agent_budget)
+                .delete(handlers::budgets::delete_agent_budget),
+        )
+        .route(
+            "/api/v1/budgets/overview",
+            get(handlers::budgets::budget_overview),
+        )
+        // ── Projects ─────────────────────────────────────────────────────
+        .route(
+            "/api/v1/projects",
+            get(handlers::projects::list_projects)
+                .post(handlers::projects::create_project),
+        )
+        .route(
+            "/api/v1/projects/{id}",
+            get(handlers::projects::get_project)
+                .put(handlers::projects::update_project)
+                .delete(handlers::projects::delete_project),
+        )
+        .route(
+            "/api/v1/projects/{id}/agents",
+            get(handlers::projects::list_project_agents),
+        )
+        .route(
+            "/api/v1/projects/{id}/costs",
+            get(handlers::projects::project_costs),
+        )
+        .route(
+            "/api/v1/agents/{id}/project",
+            axum::routing::put(handlers::projects::assign_agent_project),
         )
         // ── Reports ────────────────────────────────────────────────────────
         .route("/api/v1/reports/types", get(handlers::reports::list_types))
@@ -193,8 +256,21 @@ pub fn build_router() -> Router {
         )
         .route("/api/v1/agents/{id}/retire", post(stub_not_implemented))
         .route("/api/v1/agents/{id}/events", get(stub_list))
+        .route("/api/v1/agents/{id}/runs", get(stub_list))
+        .route("/api/v1/agents/{id}/violations", get(stub_list))
         .route("/api/v1/costs/summary", get(stub_cost_summary))
         .route("/api/v1/costs/breakdown", get(stub_cost_breakdown))
+        .route("/api/v1/costs/timeseries", get(stub_list))
+        .route(
+            "/api/v1/agents/{id}/budget",
+            get(stub_list).put(stub_not_implemented).delete(stub_not_implemented),
+        )
+        .route("/api/v1/budgets/overview", get(stub_list))
+        .route("/api/v1/projects", get(stub_list).post(stub_not_implemented))
+        .route("/api/v1/projects/{id}", get(stub_item).put(stub_not_implemented).delete(stub_not_implemented))
+        .route("/api/v1/projects/{id}/agents", get(stub_list))
+        .route("/api/v1/projects/{id}/costs", get(stub_cost_summary))
+        .route("/api/v1/agents/{id}/project", axum::routing::put(stub_not_implemented))
         .route("/api/v1/reports/types", get(handlers::reports::list_types))
         .route("/api/v1/reports", get(handlers::reports::list_reports))
         .route(

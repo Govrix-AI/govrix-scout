@@ -257,6 +257,72 @@ pub async fn get_agent_events(
     }
 }
 
+/// Get agent runs (sessions) with aggregated metrics.
+///
+/// GET /api/v1/agents/{id}/runs
+pub async fn get_agent_runs(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    Query(params): Query<AgentEventsParams>,
+) -> impl IntoResponse {
+    let limit = params.limit.unwrap_or(50).clamp(1, 200);
+
+    match govrix_scout_store::events::get_agent_runs(&state.pool, &id, limit).await {
+        Ok(runs) => {
+            let total = runs.len();
+            (
+                StatusCode::OK,
+                Json(json!({
+                    "data": runs,
+                    "total": total,
+                    "agent_id": id,
+                    "limit": limit,
+                })),
+            )
+        }
+        Err(e) => {
+            tracing::error!("get_agent_runs store error: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "failed to fetch agent runs", "detail": e.to_string() })),
+            )
+        }
+    }
+}
+
+/// Get violation events for a specific agent.
+///
+/// GET /api/v1/agents/{id}/violations
+pub async fn get_agent_violations(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    Query(params): Query<AgentEventsParams>,
+) -> impl IntoResponse {
+    let limit = params.limit.unwrap_or(50).clamp(1, 200);
+
+    match govrix_scout_store::events::get_agent_violations(&state.pool, &id, limit).await {
+        Ok(violations) => {
+            let total = violations.len();
+            (
+                StatusCode::OK,
+                Json(json!({
+                    "data": violations,
+                    "total": total,
+                    "agent_id": id,
+                    "limit": limit,
+                })),
+            )
+        }
+        Err(e) => {
+            tracing::error!("get_agent_violations store error: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "failed to fetch agent violations", "detail": e.to_string() })),
+            )
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
