@@ -167,7 +167,7 @@ export const TheClose: React.FC = () => {
                         fontWeight: 700,
                     }}
                 >
-                    ⭐ github.com/Govrix-AI/govrix-scout
+                    ⭐ github.com/manaspros/govrix-scout
                 </div>
                 <div
                     style={{

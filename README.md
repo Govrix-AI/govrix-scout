@@ -19,7 +19,7 @@
 <br/>
 
 <p align="center">
-  <b>⭐️ If you find Govrix Scout useful, <a href="https://github.com/Govrix-AI/govrix-scout">please consider giving us a star!</a> It helps the open-source project grow. ⭐️</b>
+  <b>⭐️ If you find Govrix Scout useful, <a href="https://github.com/manaspros/govrix-scout">please consider giving us a star!</a> It helps the open-source project grow. ⭐️</b>
 </p>
 
 <p align="center">
@@ -39,7 +39,7 @@
   <a href="https://govrix.dev"><b>Website</b></a> ·
   <a href="https://docs.govrix.dev"><b>Docs</b></a> ·
   <a href="#-quick-start"><b>Getting Started</b></a> ·
-  <a href="https://github.com/Govrix-AI/govrix-scout/issues"><b>Issues</b></a> ·
+  <a href="https://github.com/manaspros/govrix-scout/issues"><b>Issues</b></a> ·
   <a href="#-govrix-platform-enterprise"><b>Enterprise</b></a>
 </p>
 
@@ -130,13 +130,13 @@ Now every AI call is automatically **logged**, **costed**, **scanned for PII**, 
 curl -sSL https://govrix.dev/install.sh | bash
 
 # Windows (PowerShell as Admin)
-iwr -useb https://raw.githubusercontent.com/Govrix-AI/govrix-scout/main/install.ps1 | iex
+iwr -useb https://raw.githubusercontent.com/manaspros/govrix-scout/main/install.ps1 | iex
 ```
 
 ### Option B: Clone & Run
 
 ```bash
-git clone https://github.com/Govrix-AI/govrix-scout.git
+git clone https://github.com/manaspros/govrix-scout.git
 cd govrix-scout
 docker compose -f docker/docker-compose.yml up -d
 ```
@@ -493,7 +493,7 @@ rustc --version && cargo --version && node --version && pnpm --version && docker
 
 ```bash
 # 1. Clone
-git clone https://github.com/Govrix-AI/govrix-scout.git
+git clone https://github.com/manaspros/govrix-scout.git
 cd govrix-scout
 
 # 2. Start the database
@@ -656,7 +656,7 @@ make dev               # start everything with hot-reload
 ---
 
 <p align="center">
-  <a href="https://github.com/Govrix-AI/govrix-scout">⭐ Star on GitHub</a> · <a href="https://github.com/Govrix-AI/govrix-scout/issues">🐛 Report Bug</a> · <a href="https://github.com/Govrix-AI/govrix-scout/issues">💡 Request Feature</a> · <a href="CONTRIBUTING.md">🤝 Contribute</a>
+  <a href="https://github.com/manaspros/govrix-scout">⭐ Star on GitHub</a> · <a href="https://github.com/manaspros/govrix-scout/issues">🐛 Report Bug</a> · <a href="https://github.com/manaspros/govrix-scout/issues">💡 Request Feature</a> · <a href="CONTRIBUTING.md">🤝 Contribute</a>
 </p>
 
 ---
