@@ -31,11 +31,11 @@ services:
     networks:
       - govrix-scout
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U govrix -d govrix"]
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U govrix -d govrix"]
       interval: 10s
       timeout: 5s
-      retries: 5
-      start_period: 20s
+      retries: 10
+      start_period: 40s
 
   # ── Govrix Scout Proxy + API ──────────────────────────────────────────────────
   proxy:
@@ -60,7 +60,7 @@ services:
     networks:
       - govrix-scout
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:4001/health || exit 1"]
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:4001/health || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 3
