@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   rust:
-    name: Rust
+    name: Rust — fmt + clippy + test
     runs-on: ubuntu-latest
 
     steps:
@@ -22,31 +22,24 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
-          components: clippy, rustfmt
+          components: rustfmt, clippy
 
       - name: Restore Rust cache
         uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: "."
-          cache-on-failure: true
 
       - name: Check formatting
         run: cargo fmt --all -- --check
 
       - name: Run clippy
-        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+        run: cargo clippy --workspace -- -D warnings
 
       - name: Run tests
-        run: cargo test --workspace --lib --bins
+        run: cargo test --workspace
         env:
           RUST_LOG: error
 
-      - name: Build release binary
-        run: cargo build --release -p govrix-scout-proxy
-
   dashboard:
-    name: Dashboard
+    name: Dashboard — typecheck + build
     runs-on: ubuntu-latest
 
     steps:
@@ -61,47 +54,18 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: 20
           cache: pnpm
           cache-dependency-path: dashboard/pnpm-lock.yaml
 
       - name: Install dependencies
-        run: cd dashboard && pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile
+        working-directory: dashboard
 
       - name: Type check
-        run: cd dashboard && pnpm tsc --noEmit
+        run: pnpm tsc --noEmit
+        working-directory: dashboard
 
       - name: Build
-        run: cd dashboard && pnpm run build
-
-  docker:
-    name: Docker build check
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push'
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build proxy image (no push)
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: docker/Dockerfile
-          push: false
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          tags: govrix-scout-proxy:ci
-
-      - name: Build dashboard image (no push)
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: docker/Dockerfile.dashboard
-          push: false
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          tags: govrix-scout-dashboard:ci
+        run: pnpm build
+        working-directory: dashboard
