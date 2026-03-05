@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="govrix final logo.png" alt="Govrix Scout Logo" width="200" />
+  <img src="logo.png" alt="Govrix Scout Logo" width="200" />
 </p>
 
 <p align="center">
