@@ -177,7 +177,7 @@ def run(dry_run:bool=False,check_mode:bool=False)->int:
 
     ### Fetch 
     fetchers=[OpenAIFetcher(), AnthropicFetcher()]
-    all_models=list[ModelPricing]()
+    all_models: list[ModelPricing] = []
 
     for fetcher in fetchers:
         logger.info(f"Fetching {fetcher.provider_name} pricing...")

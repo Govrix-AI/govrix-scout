@@ -1,7 +1,7 @@
 {
   "schema_version": "1",
-  "last_updated": "2026-03-06T18:38:08.353285+00:00",
-  "models_count": 20,
+  "last_updated": "2026-03-07T08:24:54.062760+00:00",
+  "models_count": 23,
   "models": {
     "gpt-4.1": {
       "provider": "openai",
@@ -80,68 +80,89 @@
       "context_window": 200000,
       "notes": null
     },
-    "claude-opus-4-6": {
+    "claude-opus-4.6": {
       "provider": "anthropic",
-      "input_per_1m_usd": 5.0,
-      "output_per_1m_usd": 25.0,
-      "context_window": 200000,
+      "input_per_1m_usd": 2.5,
+      "output_per_1m_usd": 12.5,
+      "context_window": null,
       "notes": null
     },
-    "claude-sonnet-4-6": {
+    "claude-opus-4.5": {
       "provider": "anthropic",
-      "input_per_1m_usd": 3.0,
-      "output_per_1m_usd": 15.0,
-      "context_window": 200000,
+      "input_per_1m_usd": 2.5,
+      "output_per_1m_usd": 12.5,
+      "context_window": null,
       "notes": null
     },
-    "claude-opus-4-5": {
+    "claude-opus-4.1": {
       "provider": "anthropic",
-      "input_per_1m_usd": 5.0,
-      "output_per_1m_usd": 25.0,
-      "context_window": 200000,
-      "notes": null
-    },
-    "claude-sonnet-4-5": {
-      "provider": "anthropic",
-      "input_per_1m_usd": 3.0,
-      "output_per_1m_usd": 15.0,
-      "context_window": 200000,
-      "notes": null
-    },
-    "claude-haiku-4-5": {
-      "provider": "anthropic",
-      "input_per_1m_usd": 1.0,
-      "output_per_1m_usd": 5.0,
-      "context_window": 200000,
+      "input_per_1m_usd": 7.5,
+      "output_per_1m_usd": 37.5,
+      "context_window": null,
       "notes": null
     },
     "claude-opus-4": {
       "provider": "anthropic",
-      "input_per_1m_usd": 15.0,
-      "output_per_1m_usd": 75.0,
-      "context_window": 200000,
-      "notes": "legacy"
+      "input_per_1m_usd": 7.5,
+      "output_per_1m_usd": 37.5,
+      "context_window": null,
+      "notes": null
+    },
+    "claude-sonnet-4.6": {
+      "provider": "anthropic",
+      "input_per_1m_usd": 1.5,
+      "output_per_1m_usd": 7.5,
+      "context_window": null,
+      "notes": null
+    },
+    "claude-sonnet-4.5": {
+      "provider": "anthropic",
+      "input_per_1m_usd": 1.5,
+      "output_per_1m_usd": 7.5,
+      "context_window": null,
+      "notes": null
     },
     "claude-sonnet-4": {
       "provider": "anthropic",
-      "input_per_1m_usd": 3.0,
-      "output_per_1m_usd": 15.0,
-      "context_window": 200000,
+      "input_per_1m_usd": 1.5,
+      "output_per_1m_usd": 7.5,
+      "context_window": null,
       "notes": null
     },
-    "claude-sonnet-3-5": {
+    "claude-sonnet-3.7-(deprecated)": {
       "provider": "anthropic",
-      "input_per_1m_usd": 3.0,
-      "output_per_1m_usd": 15.0,
-      "context_window": 200000,
-      "notes": "legacy"
+      "input_per_1m_usd": 1.5,
+      "output_per_1m_usd": 7.5,
+      "context_window": null,
+      "notes": null
     },
-    "claude-haiku-3-5": {
+    "claude-haiku-4.5": {
       "provider": "anthropic",
-      "input_per_1m_usd": 0.8,
-      "output_per_1m_usd": 4.0,
-      "context_window": 200000,
-      "notes": "legacy"
+      "input_per_1m_usd": 0.5,
+      "output_per_1m_usd": 2.5,
+      "context_window": null,
+      "notes": null
+    },
+    "claude-haiku-3.5": {
+      "provider": "anthropic",
+      "input_per_1m_usd": 0.4,
+      "output_per_1m_usd": 2.0,
+      "context_window": null,
+      "notes": null
+    },
+    "claude-opus-3-(deprecated)": {
+      "provider": "anthropic",
+      "input_per_1m_usd": 7.5,
+      "output_per_1m_usd": 37.5,
+      "context_window": null,
+      "notes": null
+    },
+    "claude-haiku-3": {
+      "provider": "anthropic",
+      "input_per_1m_usd": 0.125,
+      "output_per_1m_usd": 0.625,
+      "context_window": null,
+      "notes": null
     }
   }
 }

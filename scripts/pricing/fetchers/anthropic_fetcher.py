@@ -87,7 +87,8 @@ class AnthropicFetcher(BaseFetcher):
                 ))
             except (ValueError,IndexError):
                 continue
-            return models if len(models)>=3 else None
+
+        return models if len(models)>=3 else None
     @staticmethod
     def _parse_price(text:str)->Optional[float]:
         text=text.replace(",", "").replace("$", "").strip()
