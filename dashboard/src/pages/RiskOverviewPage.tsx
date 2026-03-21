@@ -65,7 +65,7 @@ const SEVERITY_CONFIG: Record<Severity, { dot: string; badge: string; label: str
 // ── Sub-components ─────────────────────────────────────────────────────────────
 
 function SeverityBadge({ severity }: { severity: Severity }) {
-  const cfg = SEVERITY_CONFIG[severity]
+  const cfg = SEVERITY_CONFIG[severity] ?? SEVERITY_CONFIG.medium
   return (
     <span
       className={clsx(
@@ -551,10 +551,22 @@ export function RiskOverviewPage() {
   // Data loaded successfully
   const riskScore = riskData?.risk_score ?? 0
   const trendData = riskData?.trend ?? []
-  const alerts: Alert[] = riskData?.alerts ?? []
-  const stats = riskData?.stats ?? {
-    total_alerts: 0, critical: 0, high: 0, medium: 0, low: 0,
-    policy_violations_24h: 0, pii_detections_24h: 0,
+  const alerts: Alert[] = (riskData?.alerts ?? []).map((a: any) => ({
+    id: a.id ?? '',
+    severity: a.severity ?? (a.compliance_tag?.startsWith('block') ? 'critical' : a.compliance_tag?.startsWith('warn') ? 'high' : 'medium') as Severity,
+    message: a.message ?? a.compliance_tag ?? a.event_kind ?? 'Unknown alert',
+    agent: a.agent ?? a.agent_id ?? 'unknown',
+    timestamp: a.timestamp ?? '',
+  }))
+  const rawStats = riskData?.stats ?? {} as any
+  const stats = {
+    total_alerts: rawStats.total_alerts ?? ((rawStats.warnings ?? 0) + (rawStats.blocks ?? 0)),
+    critical: rawStats.critical ?? (rawStats.blocks ?? 0),
+    high: rawStats.high ?? (rawStats.high_risk_events ?? 0),
+    medium: rawStats.medium ?? (rawStats.warnings ?? 0),
+    low: rawStats.low ?? 0,
+    policy_violations_24h: rawStats.policy_violations_24h ?? (rawStats.blocks ?? 0),
+    pii_detections_24h: rawStats.pii_detections_24h ?? 0,
   }
 
   return (

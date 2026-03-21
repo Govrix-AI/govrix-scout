@@ -1076,7 +1076,7 @@ pub async fn platform_health(State(state): State<Arc<AppState>>) -> impl IntoRes
         StatusCode::OK,
         Json(json!({
             "status": if db_status == "connected" { "ok" } else { "degraded" },
-            "tier": "community",
+            "tier": "oss",
             "version": env!("CARGO_PKG_VERSION"),
             "uptime_seconds": uptime_seconds,
             "database": db_status,
