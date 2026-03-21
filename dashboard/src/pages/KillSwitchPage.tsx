@@ -564,8 +564,10 @@ function KilledAgentsSection() {
         </div>
       ) : (
         <div className="divide-y divide-[var(--govrix-border)]">
-          {killedAgents.map(agentId => {
-            const killInfo = recentKills.find(k => k.agent_id === agentId)
+          {killedAgents.map((entry: any) => {
+            // API may return strings or objects — normalize
+            const agentId = typeof entry === 'string' ? entry : entry?.agent_id ?? String(entry)
+            const killInfo = recentKills.find((k: any) => k.agent_id === agentId)
             return (
               <div key={agentId} className="px-5 py-3 flex items-center justify-between gap-4">
                 <div className="flex items-center gap-3 min-w-0">

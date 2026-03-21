@@ -208,11 +208,14 @@ export function SettingsPage() {
   }, [compactMode, refreshInterval, timezone])
 
   // ── Platform health & license queries ─────────────────────────────────────
+  // Only attempt platform calls if the user has configured an API key
+  const hasApiKey = !!apiKey && apiKey !== 'govrix-local-dev'
   const { data: platformHealth, isLoading: platformLoading, isError: platformError } = useQuery<PlatformHealth>({
     queryKey: ['platform-health'],
     queryFn: fetchPlatformHealth,
     staleTime: 30_000,
     retry: 1,
+    enabled: hasApiKey,
   })
 
   const { data: license, isLoading: licenseLoading } = useQuery<LicenseInfo>({
@@ -220,6 +223,7 @@ export function SettingsPage() {
     queryFn: fetchLicense,
     staleTime: 60_000,
     retry: 1,
+    enabled: hasApiKey,
   })
 
   // ── Version check state ───────────────────────────────────────────────────
