@@ -10,17 +10,17 @@
 //! already have session_id, timestamp, lineage_hash, and compliance_tag set.
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 
-use govrix_scout_common::models::agent::{Agent, AgentType};
+use dashmap::DashMap;
 use govrix_scout_common::models::event::AgentEvent;
-use rust_decimal::Decimal;
+use moka::sync::Cache;
 use tokio::sync::mpsc;
 
-/// Capacity of the event channel.
-/// 10,000 events in-flight provides ~seconds of buffer at high throughput.
-pub const EVENT_CHANNEL_CAPACITY: usize = 10_000;
+/// Default capacity of the event channel when no config is provided.
+/// Config field `events.channel_capacity` overrides this at startup.
+pub const EVENT_CHANNEL_CAPACITY: usize = 100_000;
 
 /// Shared metrics counters for the event pipeline.
 #[derive(Debug, Default)]
@@ -44,7 +44,7 @@ impl EventMetrics {
 /// A single `Arc<Metrics>` is created at startup and threaded through both
 /// `InterceptorState` (proxy hot path) and `AppState` (management API).
 /// All fields use `Ordering::Relaxed` — approximate counts are acceptable for metrics.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Metrics {
     /// Total proxy requests intercepted (incremented per forwarded request).
     pub requests_total: AtomicU64,
@@ -52,6 +52,68 @@ pub struct Metrics {
     pub events_total: AtomicU64,
     /// Number of distinct agents seen in the most recent flush batch.
     pub agents_active: AtomicU64,
+    /// Total events dropped due to channel-full / closed channel (fail-open).
+    pub events_dropped_total: AtomicU64,
+    /// Current depth of the event channel (sampled by writer tasks).
+    pub channel_depth: AtomicUsize,
+    /// Histogram of upstream latency_ms (buckets: 1, 5, 10, 25, 50, 100, 250, 500, 1000, 5000, +Inf).
+    pub upstream_latency_buckets: [AtomicU64; 11],
+    /// Sum of upstream latency_ms (for Prometheus _sum).
+    pub upstream_latency_sum_ms: AtomicU64,
+    /// Total observations recorded into the upstream latency histogram.
+    pub upstream_latency_count: AtomicU64,
+    /// Kill-switch cache hits.
+    pub agent_cache_hits: AtomicU64,
+    /// Kill-switch cache misses.
+    pub agent_cache_misses: AtomicU64,
+}
+
+/// Bucket boundaries (in ms) for the upstream latency histogram.
+pub const UPSTREAM_LATENCY_BUCKETS_MS: [u64; 10] = [1, 5, 10, 25, 50, 100, 250, 500, 1000, 5000];
+
+impl Default for Metrics {
+    fn default() -> Self {
+        Self {
+            requests_total: AtomicU64::new(0),
+            events_total: AtomicU64::new(0),
+            agents_active: AtomicU64::new(0),
+            events_dropped_total: AtomicU64::new(0),
+            channel_depth: AtomicUsize::new(0),
+            upstream_latency_buckets: std::array::from_fn(|_| AtomicU64::new(0)),
+            upstream_latency_sum_ms: AtomicU64::new(0),
+            upstream_latency_count: AtomicU64::new(0),
+            agent_cache_hits: AtomicU64::new(0),
+            agent_cache_misses: AtomicU64::new(0),
+        }
+    }
+}
+
+impl Metrics {
+    /// Record an upstream latency observation into the histogram.
+    pub fn observe_upstream_latency_ms(&self, value: u64) {
+        for (i, b) in UPSTREAM_LATENCY_BUCKETS_MS.iter().enumerate() {
+            if value <= *b {
+                self.upstream_latency_buckets[i].fetch_add(1, Ordering::Relaxed);
+            }
+        }
+        // +Inf bucket (always increments)
+        self.upstream_latency_buckets[10].fetch_add(1, Ordering::Relaxed);
+        self.upstream_latency_sum_ms
+            .fetch_add(value, Ordering::Relaxed);
+        self.upstream_latency_count.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Cache-hit ratio in [0.0, 1.0]. Returns 0.0 if no observations yet.
+    pub fn agent_cache_hit_ratio(&self) -> f64 {
+        let hits = self.agent_cache_hits.load(Ordering::Relaxed) as f64;
+        let misses = self.agent_cache_misses.load(Ordering::Relaxed) as f64;
+        let total = hits + misses;
+        if total == 0.0 {
+            0.0
+        } else {
+            hits / total
+        }
+    }
 }
 
 impl Metrics {
@@ -67,6 +129,17 @@ impl Metrics {
 pub struct EventSender {
     tx: mpsc::Sender<AgentEvent>,
     metrics: Arc<EventMetrics>,
+    /// Optional Prometheus-facing metrics for drop/depth counters.
+    prometheus: Option<Arc<Metrics>>,
+}
+
+impl EventSender {
+    /// Attach Prometheus metrics to this sender so drop / depth counters
+    /// are exposed at `/metrics`.
+    pub fn with_prometheus(mut self, prom: Arc<Metrics>) -> Self {
+        self.prometheus = Some(prom);
+        self
+    }
 }
 
 impl EventSender {
@@ -78,9 +151,19 @@ impl EventSender {
         match self.tx.try_send(event) {
             Ok(()) => {
                 self.metrics.events_sent.fetch_add(1, Ordering::Relaxed);
+                if let Some(ref prom) = self.prometheus {
+                    // Track current depth as send_count - processed_count.
+                    prom.channel_depth.store(
+                        self.tx.max_capacity() - self.tx.capacity(),
+                        Ordering::Relaxed,
+                    );
+                }
             }
             Err(mpsc::error::TrySendError::Full(_)) => {
                 self.metrics.events_dropped.fetch_add(1, Ordering::Relaxed);
+                if let Some(ref prom) = self.prometheus {
+                    prom.events_dropped_total.fetch_add(1, Ordering::Relaxed);
+                }
                 tracing::warn!(
                     dropped_total = self.metrics.events_dropped.load(Ordering::Relaxed),
                     "event channel full — dropping event (fail-open)"
@@ -89,6 +172,9 @@ impl EventSender {
             Err(mpsc::error::TrySendError::Closed(_)) => {
                 // Background writer has exited — count as dropped
                 self.metrics.events_dropped.fetch_add(1, Ordering::Relaxed);
+                if let Some(ref prom) = self.prometheus {
+                    prom.events_dropped_total.fetch_add(1, Ordering::Relaxed);
+                }
                 tracing::error!("event channel closed — background writer may have exited");
             }
         }
@@ -100,89 +186,164 @@ impl EventSender {
     }
 }
 
-/// Create a new event channel.
+/// Create a new event channel with the default capacity.
 ///
 /// Returns `(EventSender, mpsc::Receiver<AgentEvent>)`.
 /// The receiver should be passed to `run_background_writer`.
 pub fn create_channel() -> (EventSender, mpsc::Receiver<AgentEvent>) {
+    create_channel_with_capacity(EVENT_CHANNEL_CAPACITY)
+}
+
+/// Create a new event channel with a custom capacity.
+pub fn create_channel_with_capacity(capacity: usize) -> (EventSender, mpsc::Receiver<AgentEvent>) {
     let metrics = EventMetrics::new();
-    let (tx, rx) = mpsc::channel(EVENT_CHANNEL_CAPACITY);
-    let sender = EventSender { tx, metrics };
+    let (tx, rx) = mpsc::channel(capacity);
+    let sender = EventSender {
+        tx,
+        metrics,
+        prometheus: None,
+    };
     (sender, rx)
 }
 
-/// Background event writer task.
+/// Configuration knobs for the event background writers.
+#[derive(Debug, Clone)]
+pub struct WriterConfig {
+    pub writer_tasks: usize,
+    pub batch_size: usize,
+    pub batch_interval_ms: u64,
+}
+
+impl Default for WriterConfig {
+    fn default() -> Self {
+        Self {
+            writer_tasks: 4,
+            batch_size: 500,
+            batch_interval_ms: 50,
+        }
+    }
+}
+
+/// Shared `seen_agents` cache used by the writer pool.
 ///
-/// Drains the event channel and logs events (or batch-inserts to DB in Phase 1).
-/// This task runs forever and should be spawned with `tokio::spawn`.
+/// Moka cache replaces the unbounded `HashSet` so memory cannot grow forever
+/// as new agent IDs arrive. Cap 50k entries, idle-TTL 24h.
+pub fn build_seen_agents_cache() -> Arc<Cache<String, ()>> {
+    Arc::new(
+        Cache::builder()
+            .max_capacity(50_000)
+            .time_to_idle(std::time::Duration::from_secs(24 * 60 * 60))
+            .build(),
+    )
+}
+
+/// Spawn N writer tasks that share a single mpsc receiver.
 ///
-/// Fail-open design: if this task panics or exits, proxy continues working
-/// (events are just dropped at the channel boundary).
+/// Each writer drains up to `batch_size` events (or waits up to
+/// `batch_interval_ms`) then flushes via [`flush_batch`]. The receiver is
+/// guarded by a `tokio::sync::Mutex` — only `recv()` is contended, all DB
+/// work happens outside the lock and runs in parallel across tasks.
+pub fn spawn_writer_pool(
+    rx: mpsc::Receiver<AgentEvent>,
+    event_metrics: Arc<EventMetrics>,
+    pool: Option<govrix_scout_store::StorePool>,
+    metrics: Arc<Metrics>,
+    cfg: WriterConfig,
+) -> Vec<tokio::task::JoinHandle<()>> {
+    let rx = Arc::new(tokio::sync::Mutex::new(rx));
+    let seen_agents = build_seen_agents_cache();
+    let n = cfg.writer_tasks.max(1);
+    let mut handles = Vec::with_capacity(n);
+    for id in 0..n {
+        let rx = rx.clone();
+        let event_metrics = event_metrics.clone();
+        let pool = pool.clone();
+        let metrics = metrics.clone();
+        let seen_agents = seen_agents.clone();
+        let cfg = cfg.clone();
+        handles.push(tokio::spawn(async move {
+            tracing::info!(writer = id, "event writer task started");
+            run_writer_task(rx, event_metrics, pool, metrics, seen_agents, cfg).await;
+        }));
+    }
+    handles
+}
+
+/// Legacy entry point — single writer task. Kept for backward compatibility
+/// with `main.rs` callers that pass a single receiver and don't want a pool.
 pub async fn run_background_writer(
-    mut rx: mpsc::Receiver<AgentEvent>,
+    rx: mpsc::Receiver<AgentEvent>,
     event_metrics: Arc<EventMetrics>,
     pool: Option<govrix_scout_store::StorePool>,
     metrics: Arc<Metrics>,
 ) {
-    tracing::info!("event background writer started");
+    let rx = Arc::new(tokio::sync::Mutex::new(rx));
+    let seen_agents = build_seen_agents_cache();
+    run_writer_task(
+        rx,
+        event_metrics,
+        pool,
+        metrics,
+        seen_agents,
+        WriterConfig::default(),
+    )
+    .await;
+}
 
-    // Batch buffer for future DB inserts (Phase 1)
-    let mut batch: Vec<AgentEvent> = Vec::with_capacity(100);
-
-    // Track all distinct agent IDs seen since startup for agents_active gauge.
-    let mut seen_agents: std::collections::HashSet<String> = std::collections::HashSet::new();
+async fn run_writer_task(
+    rx: Arc<tokio::sync::Mutex<mpsc::Receiver<AgentEvent>>>,
+    event_metrics: Arc<EventMetrics>,
+    pool: Option<govrix_scout_store::StorePool>,
+    metrics: Arc<Metrics>,
+    seen_agents: Arc<Cache<String, ()>>,
+    cfg: WriterConfig,
+) {
+    let mut batch: Vec<AgentEvent> = Vec::with_capacity(cfg.batch_size);
+    let batch_interval = tokio::time::Duration::from_millis(cfg.batch_interval_ms);
 
     loop {
-        // Drain up to 100 events or wait up to 100ms
-        let deadline = tokio::time::Instant::now() + tokio::time::Duration::from_millis(100);
+        let deadline = tokio::time::Instant::now() + batch_interval;
 
+        // Drain a batch from the shared receiver.
         loop {
+            let mut guard = rx.lock().await;
             tokio::select! {
                 biased;
-
-                event = rx.recv() => {
+                event = guard.recv() => {
                     match event {
                         Some(ev) => {
-                            tracing::debug!(
+                            drop(guard); // release before any heavy work
+                            tracing::trace!(
                                 event_id = %ev.id,
                                 agent = %ev.agent_id,
-                                session = %ev.session_id,
-                                provider = %ev.provider,
-                                model = ?ev.model,
-                                status = ?ev.status_code,
-                                latency_ms = ?ev.latency_ms,
-                                input_tokens = ?ev.input_tokens,
-                                output_tokens = ?ev.output_tokens,
-                                lineage_hash = %ev.lineage_hash,
-                                compliance_tag = %ev.compliance_tag,
                                 "event received"
                             );
                             batch.push(ev);
                             event_metrics.events_processed.fetch_add(1, Ordering::Relaxed);
-
-                            if batch.len() >= 100 {
-                                flush_batch(&mut batch, &pool, &metrics, &mut seen_agents).await;
+                            if batch.len() >= cfg.batch_size {
                                 break;
                             }
                         }
                         None => {
-                            // Channel closed — flush remaining and exit
-                            tracing::warn!("event channel closed, flushing {} remaining events", batch.len());
-                            flush_batch(&mut batch, &pool, &metrics, &mut seen_agents).await;
+                            // Channel closed — flush and exit.
+                            drop(guard);
+                            tracing::warn!(
+                                "event channel closed, flushing {} remaining events",
+                                batch.len()
+                            );
+                            flush_batch(&mut batch, &pool, &metrics, &seen_agents).await;
                             return;
                         }
                     }
                 }
-
                 _ = tokio::time::sleep_until(deadline) => {
-                    // Timeout reached — flush whatever we have
                     break;
                 }
             }
         }
 
         if !batch.is_empty() {
-            flush_batch(&mut batch, &pool, &metrics, &mut seen_agents).await;
+            flush_batch(&mut batch, &pool, &metrics, &seen_agents).await;
         }
     }
 }
@@ -194,7 +355,7 @@ async fn flush_batch(
     batch: &mut Vec<AgentEvent>,
     pool: &Option<govrix_scout_store::StorePool>,
     metrics: &Arc<Metrics>,
-    seen_agents: &mut std::collections::HashSet<String>,
+    seen_agents: &Arc<Cache<String, ()>>,
 ) {
     if batch.is_empty() {
         return;
@@ -205,7 +366,6 @@ async fn flush_batch(
             match govrix_scout_store::events::insert_events_batch(p, batch).await {
                 Ok(count) => {
                     tracing::debug!(count, "flushed event batch to PostgreSQL");
-                    // Increment events_total by the number of successfully inserted events.
                     metrics
                         .events_total
                         .fetch_add(count as u64, Ordering::Relaxed);
@@ -218,9 +378,6 @@ async fn flush_batch(
                     );
                 }
             }
-
-            // Upsert agents from the batch (deduplicated by agent_id).
-            // Aggregates per-agent stats so we make one upsert call per unique agent.
             upsert_agents_from_batch(p, batch, metrics, seen_agents).await;
         }
         None => {
@@ -234,81 +391,72 @@ async fn flush_batch(
     batch.clear();
 }
 
-/// Upsert agent records from a batch of events.
+/// Upsert agent records from a batch of events in a single UNNEST round-trip.
 ///
 /// Deduplicates by agent_id, aggregating token and cost stats across all events
-/// for each unique agent within the batch. Uses `upsert_agent` which handles
-/// ON CONFLICT semantics in the database.
+/// for each unique agent within the batch.
 ///
 /// Fail-open: errors are logged as warnings but never propagated.
 async fn upsert_agents_from_batch(
     pool: &govrix_scout_store::StorePool,
     batch: &[AgentEvent],
     metrics: &Arc<Metrics>,
-    seen_agents: &mut std::collections::HashSet<String>,
+    seen_agents: &Arc<Cache<String, ()>>,
 ) {
-    // Aggregate stats per agent_id within this batch.
-    struct AgentAccum {
-        last_model: Option<String>,
-        tokens_in: i64,
-        tokens_out: i64,
-        cost_usd: Decimal,
-        request_count: i64,
-    }
+    use govrix_scout_store::AgentBatchStats;
 
-    let mut agents: HashMap<&str, AgentAccum> = HashMap::new();
+    let mut agents: HashMap<&str, AgentBatchStats> = HashMap::new();
 
     for ev in batch {
-        let entry = agents.entry(ev.agent_id.as_str()).or_insert(AgentAccum {
-            last_model: None,
-            tokens_in: 0,
-            tokens_out: 0,
-            cost_usd: Decimal::ZERO,
-            request_count: 0,
-        });
+        let entry = agents
+            .entry(ev.agent_id.as_str())
+            .or_insert_with(|| AgentBatchStats {
+                agent_id: ev.agent_id.clone(),
+                last_model: None,
+                tokens_in: 0,
+                tokens_out: 0,
+                cost_usd: 0.0,
+                request_count: 0,
+            });
         entry.request_count += 1;
         entry.tokens_in += ev.input_tokens.unwrap_or(0) as i64;
         entry.tokens_out += ev.output_tokens.unwrap_or(0) as i64;
-        entry.cost_usd += ev.cost_usd.unwrap_or(Decimal::ZERO);
+        if let Some(d) = ev.cost_usd {
+            entry.cost_usd += rust_decimal::prelude::ToPrimitive::to_f64(&d).unwrap_or(0.0);
+        }
         if ev.model.is_some() {
             entry.last_model = ev.model.clone();
         }
     }
 
-    for (agent_id, accum) in &agents {
-        let mut agent = Agent::new(*agent_id, AgentType::Unknown);
-        agent.last_model_used = accum.last_model.clone();
-        agent.total_tokens_in = accum.tokens_in;
-        agent.total_tokens_out = accum.tokens_out;
-        agent.total_cost_usd = accum.cost_usd;
-        agent.total_requests = accum.request_count;
-
-        if let Err(e) = govrix_scout_store::agents::upsert_agent(pool, &agent).await {
-            tracing::warn!(
-                error = %e,
-                agent_id = %agent_id,
-                "failed to upsert agent (fail-open, agent stats may be stale)"
-            );
-        }
+    if agents.is_empty() {
+        return;
     }
 
-    if !agents.is_empty() {
-        // Track all distinct agent IDs seen since startup.
-        // seen_agents is maintained by run_background_writer across all batch flushes.
-        for agent_id in agents.keys() {
-            seen_agents.insert((*agent_id).to_string());
-        }
-        // Update agents_active with the total count of unique agents seen in-process.
-        metrics
-            .agents_active
-            .store(seen_agents.len() as u64, Ordering::Relaxed);
-
-        tracing::debug!(
-            unique_agents = agents.len(),
-            total_agents_active = seen_agents.len(),
-            "upserted agents from event batch"
+    let stats: Vec<AgentBatchStats> = agents.values().cloned().collect();
+    if let Err(e) = govrix_scout_store::upsert_agents_batch(pool, &stats).await {
+        tracing::warn!(
+            error = %e,
+            count = stats.len(),
+            "failed to upsert agents batch (fail-open, agent stats may be stale)"
         );
     }
+
+    // Record into the moka cache. `entry_count()` is approximate but fine
+    // for an agents_active gauge.
+    for agent_id in agents.keys() {
+        seen_agents.insert((*agent_id).to_string(), ());
+    }
+    seen_agents.run_pending_tasks();
+    metrics
+        .agents_active
+        .store(seen_agents.entry_count(), Ordering::Relaxed);
+
+    tracing::debug!(
+        unique_agents = agents.len(),
+        agents_cached = seen_agents.entry_count(),
+        "upserted agents from event batch"
+    );
 }
 
 /// Compute a SHA-256 lineage hash linking this event to the previous one.
@@ -335,16 +483,18 @@ pub fn compute_lineage_hash(
 /// Session tracker — assigns and tracks session IDs per agent.
 ///
 /// A session groups related requests from the same agent into a conversation.
-/// Simple heuristic: same agent_id = same session (until a configurable idle timeout).
-///
-/// This is a lightweight in-memory tracker. Phase 1 will add persistence.
+/// Backed by a `DashMap` so all reads and writes are lock-free at the map level
+/// and only ever hold a shard guard for a single atomic operation. The
+/// `&self` methods can be called concurrently from many tasks.
 pub struct SessionTracker {
-    sessions: std::collections::HashMap<String, SessionState>,
+    sessions: DashMap<String, SessionState>,
     session_idle_timeout: std::time::Duration,
 }
 
+#[derive(Clone)]
 struct SessionState {
     session_id: uuid::Uuid,
+    #[allow(dead_code)]
     last_event_id: uuid::Uuid,
     last_lineage_hash: String,
     last_seen: std::time::Instant,
@@ -358,7 +508,7 @@ impl SessionTracker {
 
     pub fn with_timeout(timeout: std::time::Duration) -> Self {
         Self {
-            sessions: std::collections::HashMap::new(),
+            sessions: DashMap::new(),
             session_idle_timeout: timeout,
         }
     }
@@ -366,39 +516,44 @@ impl SessionTracker {
     /// Get or create a session for the given agent_id.
     ///
     /// Returns `(session_id, prev_lineage_hash)`.
-    /// The caller must compute the new lineage hash and update via `record_event`.
-    pub fn get_or_create(&mut self, agent_id: &str, event_id: &uuid::Uuid) -> (uuid::Uuid, String) {
+    /// Performs a single atomic `entry().or_insert_with()` — no awaits, no
+    /// long-held locks. Idle sessions (older than `session_idle_timeout`) are
+    /// rotated in-place.
+    pub fn get_or_create(&self, agent_id: &str, event_id: &uuid::Uuid) -> (uuid::Uuid, String) {
         let now = std::time::Instant::now();
+        let timeout = self.session_idle_timeout;
 
-        // Expire idle sessions
-        if let Some(state) = self.sessions.get(agent_id) {
-            if now.duration_since(state.last_seen) > self.session_idle_timeout {
-                self.sessions.remove(agent_id);
-            }
-        }
-
-        if let Some(state) = self.sessions.get(agent_id) {
-            (state.session_id, state.last_lineage_hash.clone())
-        } else {
-            // New session
-            let session_id = uuid::Uuid::now_v7();
-            let genesis_hash = compute_lineage_hash("GENESIS", event_id, agent_id, 0);
-            self.sessions.insert(
-                agent_id.to_string(),
+        let mut entry = self
+            .sessions
+            .entry(agent_id.to_string())
+            .or_insert_with(|| {
+                let session_id = uuid::Uuid::now_v7();
+                let genesis_hash = compute_lineage_hash("GENESIS", event_id, agent_id, 0);
                 SessionState {
                     session_id,
                     last_event_id: *event_id,
-                    last_lineage_hash: genesis_hash.clone(),
+                    last_lineage_hash: genesis_hash,
                     last_seen: now,
-                },
-            );
-            (session_id, genesis_hash)
+                }
+            });
+
+        // Rotate idle session in-place if needed
+        if now.duration_since(entry.last_seen) > timeout {
+            let session_id = uuid::Uuid::now_v7();
+            let genesis_hash = compute_lineage_hash("GENESIS", event_id, agent_id, 0);
+            entry.session_id = session_id;
+            entry.last_event_id = *event_id;
+            entry.last_lineage_hash = genesis_hash.clone();
+            entry.last_seen = now;
+            return (session_id, genesis_hash);
         }
+
+        (entry.session_id, entry.last_lineage_hash.clone())
     }
 
     /// Record that an event was processed, updating the lineage chain.
-    pub fn record_event(&mut self, agent_id: &str, event_id: uuid::Uuid, lineage_hash: String) {
-        if let Some(state) = self.sessions.get_mut(agent_id) {
+    pub fn record_event(&self, agent_id: &str, event_id: uuid::Uuid, lineage_hash: String) {
+        if let Some(mut state) = self.sessions.get_mut(agent_id) {
             state.last_event_id = event_id;
             state.last_lineage_hash = lineage_hash;
             state.last_seen = std::time::Instant::now();
@@ -434,7 +589,7 @@ mod tests {
 
     #[test]
     fn session_tracker_creates_session() {
-        let mut tracker = SessionTracker::new();
+        let tracker = SessionTracker::new();
         let event_id = uuid::Uuid::now_v7();
         let (session_id, hash) = tracker.get_or_create("agent-1", &event_id);
         assert!(!hash.is_empty());
@@ -446,7 +601,7 @@ mod tests {
 
     #[test]
     fn session_tracker_different_agents_get_different_sessions() {
-        let mut tracker = SessionTracker::new();
+        let tracker = SessionTracker::new();
         let event_id = uuid::Uuid::now_v7();
         let (s1, _) = tracker.get_or_create("agent-1", &event_id);
         let (s2, _) = tracker.get_or_create("agent-2", &event_id);

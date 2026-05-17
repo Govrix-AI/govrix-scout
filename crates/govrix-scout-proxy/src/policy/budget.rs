@@ -19,6 +19,7 @@
 use std::collections::HashMap;
 
 use chrono::{NaiveDate, Utc};
+use moka::sync::Cache;
 use serde::{Deserialize, Serialize};
 
 use super::types::{AlertSeverity, PolicyAction};
@@ -77,9 +78,19 @@ pub struct DailyUsage {
 pub struct BudgetTracker {
     policy: BudgetPolicy,
     /// Per-agent daily usage; reset when `last_reset` date changes.
-    daily_usage: HashMap<String, DailyUsage>,
+    ///
+    /// Backed by `moka::sync::Cache` so memory cannot grow unbounded as new
+    /// agent IDs arrive. Cap 100k entries, TTL 25h (covers the daily reset).
+    daily_usage: Cache<String, DailyUsage>,
     /// The UTC date of the last reset (or startup).
     last_reset: NaiveDate,
+}
+
+fn build_daily_usage_cache() -> Cache<String, DailyUsage> {
+    Cache::builder()
+        .max_capacity(100_000)
+        .time_to_live(std::time::Duration::from_secs(25 * 60 * 60))
+        .build()
 }
 
 impl BudgetTracker {
@@ -87,7 +98,7 @@ impl BudgetTracker {
     pub fn new(policy: BudgetPolicy) -> Self {
         Self {
             policy,
-            daily_usage: HashMap::new(),
+            daily_usage: build_daily_usage_cache(),
             last_reset: Utc::now().date_naive(),
         }
     }
@@ -141,28 +152,29 @@ impl BudgetTracker {
 
         // ── Global limits (fallback) ──────────────────────────────────────────
         if let Some(global) = &self.policy.global_limit {
-            if let Some(limit) = global.daily_token_limit {
-                let global_tokens: u64 = self.daily_usage.values().map(|u| u.tokens).sum();
-                if let Some(action) = check_token_limit(
-                    global_tokens,
-                    estimated_tokens,
-                    limit,
-                    "global",
-                    "global daily token limit",
-                ) {
-                    return action;
+            if global.daily_token_limit.is_some() || global.daily_cost_limit_usd.is_some() {
+                let (global_tokens, global_cost) = self.global_totals();
+                if let Some(limit) = global.daily_token_limit {
+                    if let Some(action) = check_token_limit(
+                        global_tokens,
+                        estimated_tokens,
+                        limit,
+                        "global",
+                        "global daily token limit",
+                    ) {
+                        return action;
+                    }
                 }
-            }
-            if let Some(limit) = global.daily_cost_limit_usd {
-                let global_cost: f64 = self.daily_usage.values().map(|u| u.cost_usd).sum();
-                if let Some(action) = check_cost_limit(
-                    global_cost,
-                    estimated_cost_usd,
-                    limit,
-                    "global",
-                    "global daily cost limit",
-                ) {
-                    return action;
+                if let Some(limit) = global.daily_cost_limit_usd {
+                    if let Some(action) = check_cost_limit(
+                        global_cost,
+                        estimated_cost_usd,
+                        limit,
+                        "global",
+                        "global daily cost limit",
+                    ) {
+                        return action;
+                    }
                 }
             }
         }
@@ -178,36 +190,50 @@ impl BudgetTracker {
     /// method and then spawns a fire-and-forget DB write.
     pub fn record_usage(&mut self, agent_id: &str, tokens: u64, cost_usd: f64) {
         self.maybe_reset_daily();
-        let usage = self.daily_usage.entry(agent_id.to_string()).or_default();
+        let key = agent_id.to_string();
+        let mut usage = self.daily_usage.get(&key).unwrap_or_default();
         usage.tokens = usage.tokens.saturating_add(tokens);
         usage.cost_usd += cost_usd;
+        self.daily_usage.insert(key, usage);
     }
 
     /// Return a snapshot of today's usage for `agent_id` (zero if unseen).
     pub fn current_usage(&self, agent_id: &str) -> DailyUsage {
-        self.daily_usage.get(agent_id).cloned().unwrap_or_default()
+        self.daily_usage.get(agent_id).unwrap_or_default()
     }
 
     /// Return all agent IDs that have usage recorded today.
     pub fn tracked_agents(&self) -> Vec<String> {
-        self.daily_usage.keys().cloned().collect()
+        self.daily_usage.iter().map(|(k, _)| (*k).clone()).collect()
     }
 
-    /// Get a mutable reference to the `DailyUsage` entry for `agent_id`,
-    /// creating a zero entry if one does not yet exist.
-    ///
-    /// Used by `PolicyEngine::load_budget_from_db` to apply persisted DB rows
-    /// to the in-memory tracker without going through `record_usage` (which
-    /// would also trigger `maybe_reset_daily`).
-    pub fn daily_usage_entry(&mut self, agent_id: &str) -> &mut DailyUsage {
-        self.daily_usage.entry(agent_id.to_string()).or_default()
+    /// Apply a pre-computed `DailyUsage` snapshot to the tracker, adding to any
+    /// existing entry (used by `PolicyEngine::load_budget_from_db`).
+    pub fn apply_usage_snapshot(&mut self, agent_id: &str, tokens: u64, cost_usd: f64) {
+        let key = agent_id.to_string();
+        let mut usage = self.daily_usage.get(&key).unwrap_or_default();
+        usage.tokens = usage.tokens.saturating_add(tokens);
+        usage.cost_usd += cost_usd;
+        self.daily_usage.insert(key, usage);
+    }
+
+    /// Sum tokens and cost across all agents in the tracker.
+    fn global_totals(&self) -> (u64, f64) {
+        let mut tokens: u64 = 0;
+        let mut cost: f64 = 0.0;
+        for (_, u) in self.daily_usage.iter() {
+            tokens = tokens.saturating_add(u.tokens);
+            cost += u.cost_usd;
+        }
+        (tokens, cost)
     }
 
     /// Reset daily counters if the UTC date has changed.
     fn maybe_reset_daily(&mut self) {
         let today = Utc::now().date_naive();
         if today > self.last_reset {
-            self.daily_usage.clear();
+            self.daily_usage.invalidate_all();
+            self.daily_usage.run_pending_tasks();
             self.last_reset = today;
             tracing::info!("budget tracker: daily usage reset for {}", today);
         }
@@ -543,22 +569,18 @@ mod tests {
 
     // ── load_from_db (sync simulation) ───────────────────────────────────────
 
-    /// Verify that daily_usage_entry populates values that are visible via
+    /// Verify that `apply_usage_snapshot` populates values that are visible via
     /// current_usage — this mirrors what PolicyEngine::load_budget_from_db does.
     #[test]
-    fn daily_usage_entry_sets_values_visible_via_current_usage() {
+    fn apply_usage_snapshot_visible_via_current_usage() {
         let mut tracker = BudgetTracker::unlimited();
 
-        // Simulate what PolicyEngine::load_budget_from_db does internally:
-        // rows = [("agent-1", 1000, 2.5), ("agent-2", 500, 1.0)]
         let rows: Vec<(String, i64, f64)> = vec![
             ("agent-1".to_string(), 1000, 2.5),
             ("agent-2".to_string(), 500, 1.0),
         ];
         for (agent_id, tokens, cost_usd) in rows {
-            let usage = tracker.daily_usage_entry(&agent_id);
-            usage.tokens = usage.tokens.saturating_add(tokens as u64);
-            usage.cost_usd += cost_usd;
+            tracker.apply_usage_snapshot(&agent_id, tokens as u64, cost_usd);
         }
 
         assert_eq!(tracker.current_usage("agent-1").tokens, 1000);

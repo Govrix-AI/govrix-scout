@@ -94,8 +94,9 @@ tdigest = "0.2"
 hyperloglog-rs = "0.1"
 aho-corasick = "1"
 
-# Optional: Tier 2 sink
-redis = { version = "0.27", default-features = false, features = ["tokio-comp", "streams"], optional = true }
+# Optional: Tier 2 sink — declared as a workspace dep without `optional`;
+# crates that consume it should mark it `optional = true` in their own Cargo.toml.
+redis = { version = "0.27", default-features = false, features = ["tokio-comp", "streams"] }
 
 # Internal crates
 govrix-scout-common = { path = "crates/govrix-scout-common" }

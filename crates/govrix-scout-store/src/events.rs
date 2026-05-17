@@ -108,9 +108,11 @@ pub async fn insert_event(pool: &StorePool, event: &AgentEvent) -> Result<(), sq
     Ok(())
 }
 
-/// Insert a batch of events efficiently using a single transaction.
+/// Insert a batch of events using a single UNNEST round-trip.
 ///
-/// Used by the background batch writer that drains the bounded channel.
+/// Builds 25 column arrays and does a single
+/// `INSERT INTO events ... SELECT * FROM UNNEST($1::uuid[], ...)`.
+/// One network round-trip per batch instead of one per row.
 pub async fn insert_events_batch(
     pool: &StorePool,
     events: &[AgentEvent],
@@ -119,67 +121,117 @@ pub async fn insert_events_batch(
         return Ok(0);
     }
 
-    let mut tx = pool.begin().await?;
-    for event in events {
-        let direction = event.direction.to_string();
-        let provider = event.provider.to_string();
-        let pii_json =
-            serde_json::to_value(&event.pii_detected).unwrap_or(serde_json::Value::Array(vec![]));
-        let tools_json =
-            serde_json::to_value(&event.tools_called).unwrap_or(serde_json::Value::Array(vec![]));
+    let n = events.len();
+    let mut ids: Vec<Uuid> = Vec::with_capacity(n);
+    let mut session_ids: Vec<Uuid> = Vec::with_capacity(n);
+    let mut agent_ids: Vec<String> = Vec::with_capacity(n);
+    let mut timestamps: Vec<DateTime<Utc>> = Vec::with_capacity(n);
+    let mut latencies: Vec<Option<i32>> = Vec::with_capacity(n);
+    let mut directions: Vec<String> = Vec::with_capacity(n);
+    let mut methods: Vec<String> = Vec::with_capacity(n);
+    let mut upstreams: Vec<String> = Vec::with_capacity(n);
+    let mut providers: Vec<String> = Vec::with_capacity(n);
+    let mut models: Vec<Option<String>> = Vec::with_capacity(n);
+    let mut status_codes: Vec<Option<i32>> = Vec::with_capacity(n);
+    let mut finish_reasons: Vec<Option<String>> = Vec::with_capacity(n);
+    let mut payloads: Vec<serde_json::Value> = Vec::with_capacity(n);
+    let mut raw_sizes: Vec<Option<i64>> = Vec::with_capacity(n);
+    let mut input_tokens: Vec<Option<i32>> = Vec::with_capacity(n);
+    let mut output_tokens: Vec<Option<i32>> = Vec::with_capacity(n);
+    let mut total_tokens: Vec<Option<i32>> = Vec::with_capacity(n);
+    let mut costs: Vec<Option<rust_decimal::Decimal>> = Vec::with_capacity(n);
+    let mut pii_jsons: Vec<serde_json::Value> = Vec::with_capacity(n);
+    let mut tools_jsons: Vec<serde_json::Value> = Vec::with_capacity(n);
+    let mut lineage_hashes: Vec<String> = Vec::with_capacity(n);
+    let mut compliance_tags: Vec<String> = Vec::with_capacity(n);
+    let mut tags_jsons: Vec<serde_json::Value> = Vec::with_capacity(n);
+    let mut error_messages: Vec<Option<String>> = Vec::with_capacity(n);
+    let mut created_ats: Vec<DateTime<Utc>> = Vec::with_capacity(n);
 
-        sqlx::query(
-            r#"
-            INSERT INTO events (
-                id, session_id, agent_id,
-                timestamp, latency_ms,
-                direction, method, upstream_target, provider, model,
-                status_code, finish_reason, payload, raw_size_bytes,
-                input_tokens, output_tokens, total_tokens, cost_usd,
-                pii_detected, tools_called,
-                lineage_hash, compliance_tag, tags, error_message,
-                created_at
-            ) VALUES (
-                $1, $2, $3,
-                $4, $5,
-                $6, $7, $8, $9, $10,
-                $11, $12, $13, $14,
-                $15, $16, $17, $18,
-                $19, $20,
-                $21, $22, $23, $24,
-                $25
-            )
-            "#,
-        )
-        .bind(event.id)
-        .bind(event.session_id)
-        .bind(&event.agent_id)
-        .bind(event.timestamp)
-        .bind(event.latency_ms.map(|v| v as i32))
-        .bind(&direction)
-        .bind(&event.method)
-        .bind(&event.upstream_target)
-        .bind(&provider)
-        .bind(&event.model)
-        .bind(event.status_code.map(|v| v as i32))
-        .bind(&event.finish_reason)
-        .bind(&event.payload)
-        .bind(event.raw_size_bytes)
-        .bind(event.input_tokens)
-        .bind(event.output_tokens)
-        .bind(event.total_tokens)
-        .bind(event.cost_usd)
-        .bind(&pii_json)
-        .bind(&tools_json)
-        .bind(&event.lineage_hash)
-        .bind(&event.compliance_tag)
-        .bind(&event.tags)
-        .bind(&event.error_message)
-        .bind(event.created_at)
-        .execute(&mut *tx)
-        .await?;
+    for event in events {
+        ids.push(event.id);
+        session_ids.push(event.session_id);
+        agent_ids.push(event.agent_id.clone());
+        timestamps.push(event.timestamp);
+        latencies.push(event.latency_ms.map(|v| v as i32));
+        directions.push(event.direction.to_string());
+        methods.push(event.method.clone());
+        upstreams.push(event.upstream_target.clone());
+        providers.push(event.provider.to_string());
+        models.push(event.model.clone());
+        status_codes.push(event.status_code.map(|v| v as i32));
+        finish_reasons.push(event.finish_reason.clone());
+        payloads.push(event.payload.clone().unwrap_or(serde_json::Value::Null));
+        raw_sizes.push(event.raw_size_bytes);
+        input_tokens.push(event.input_tokens);
+        output_tokens.push(event.output_tokens);
+        total_tokens.push(event.total_tokens);
+        costs.push(event.cost_usd);
+        pii_jsons.push(
+            serde_json::to_value(&event.pii_detected).unwrap_or(serde_json::Value::Array(vec![])),
+        );
+        tools_jsons.push(
+            serde_json::to_value(&event.tools_called).unwrap_or(serde_json::Value::Array(vec![])),
+        );
+        lineage_hashes.push(event.lineage_hash.clone());
+        compliance_tags.push(event.compliance_tag.clone());
+        tags_jsons.push(event.tags.clone());
+        error_messages.push(event.error_message.clone());
+        created_ats.push(event.created_at);
     }
-    tx.commit().await?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO events (
+            id, session_id, agent_id,
+            timestamp, latency_ms,
+            direction, method, upstream_target, provider, model,
+            status_code, finish_reason, payload, raw_size_bytes,
+            input_tokens, output_tokens, total_tokens, cost_usd,
+            pii_detected, tools_called,
+            lineage_hash, compliance_tag, tags, error_message,
+            created_at
+        )
+        SELECT * FROM UNNEST(
+            $1::uuid[], $2::uuid[], $3::text[],
+            $4::timestamptz[], $5::int4[],
+            $6::text[], $7::text[], $8::text[], $9::text[], $10::text[],
+            $11::int4[], $12::text[], $13::jsonb[], $14::int8[],
+            $15::int4[], $16::int4[], $17::int4[], $18::numeric[],
+            $19::jsonb[], $20::jsonb[],
+            $21::text[], $22::text[], $23::jsonb[], $24::text[],
+            $25::timestamptz[]
+        )
+        "#,
+    )
+    .bind(&ids)
+    .bind(&session_ids)
+    .bind(&agent_ids)
+    .bind(&timestamps)
+    .bind(&latencies)
+    .bind(&directions)
+    .bind(&methods)
+    .bind(&upstreams)
+    .bind(&providers)
+    .bind(&models)
+    .bind(&status_codes)
+    .bind(&finish_reasons)
+    .bind(&payloads)
+    .bind(&raw_sizes)
+    .bind(&input_tokens)
+    .bind(&output_tokens)
+    .bind(&total_tokens)
+    .bind(&costs)
+    .bind(&pii_jsons)
+    .bind(&tools_jsons)
+    .bind(&lineage_hashes)
+    .bind(&compliance_tags)
+    .bind(&tags_jsons)
+    .bind(&error_messages)
+    .bind(&created_ats)
+    .execute(pool)
+    .await?;
+
     Ok(events.len())
 }
 

@@ -12,22 +12,46 @@
 //! The client MUST NOT be blocked by any internal operation.
 
 use std::net::SocketAddr;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use bytes::Bytes;
-use http_body_util::{BodyExt, Full};
+use http_body_util::{BodyExt, Full, Limited};
 use hyper::{body::Incoming, Request, Response};
 
 use govrix_scout_common::protocols::Protocol;
 
 use super::{agent_detect, interceptor, upstream};
-use crate::proxy::interceptor::{InterceptorState, RequestContext};
+use crate::proxy::interceptor::{AgentStatus, InterceptorState, RequestContext};
 
 /// Core proxy request handler — entry point for every proxied HTTP request.
 ///
 /// Signature matches `hyper::service::service_fn` expectations.
 pub async fn proxy_handler(
+    req: Request<Incoming>,
+    peer_addr: SocketAddr,
+    state: Arc<InterceptorState>,
+) -> Result<Response<Full<Bytes>>, hyper::Error> {
+    let timeout = Duration::from_secs(state.request_timeout_secs.max(1));
+    match tokio::time::timeout(timeout, proxy_handler_inner(req, peer_addr, state)).await {
+        Ok(res) => res,
+        Err(_) => {
+            tracing::warn!(
+                timeout_secs = timeout.as_secs(),
+                "proxy handler timed out — returning 504"
+            );
+            let body = Bytes::from_static(b"{\"error\":\"upstream timeout\",\"code\":504}");
+            Ok(Response::builder()
+                .status(504)
+                .header("content-type", "application/json")
+                .body(Full::new(body))
+                .unwrap())
+        }
+    }
+}
+
+async fn proxy_handler_inner(
     req: Request<Incoming>,
     peer_addr: SocketAddr,
     state: Arc<InterceptorState>,
@@ -42,11 +66,16 @@ pub async fn proxy_handler(
     let agent_id = agent_detect::resolve_agent_id(&parts.headers, peer_addr);
 
     // ── Request body tee ──────────────────────────────────────────────────────
-    // Read the body once; clone bytes for analysis. For requests < 1MB this is fine.
-    let body_bytes = match body.collect().await {
+    // Read the body once; clone bytes for analysis. `Limited` caps the total
+    // bytes we'll hold in memory at a generous 32 MiB so a single hostile
+    // client can't OOM the process. The interceptor's payload-capture path
+    // independently honours `state.max_body_tee_bytes` (default 1 MiB) when
+    // deciding whether to keep the parsed JSON for audit.
+    const REQUEST_BODY_HARD_LIMIT: usize = 32 * 1024 * 1024;
+    let body_bytes = match Limited::new(body, REQUEST_BODY_HARD_LIMIT).collect().await {
         Ok(collected) => collected.to_bytes(),
         Err(e) => {
-            tracing::warn!("failed to read request body: {}", e);
+            tracing::warn!("failed to read request body (over limit or io): {}", e);
             // Fail-open: continue with empty body tee
             Bytes::new()
         }
@@ -72,31 +101,51 @@ pub async fn proxy_handler(
     });
 
     // ── Kill switch: reject blocked agents before forwarding ──────────────────
-    // Check the agent's status in the registry. If the agent has been retired
-    // (status == 'blocked'), return 403 immediately without hitting upstream.
-    // This check is skipped when no DB pool is available (fail-open design).
+    // Status is cached in `state.agent_status_cache` (moka, default 30s TTL)
+    // so the hot path avoids a DB round-trip on every request.
     if let Some(ref pool) = state.db_pool {
-        match govrix_scout_store::get_agent(pool, &agent_id).await {
-            Ok(Some(agent_json)) => {
-                if interceptor::agent_json_is_blocked(&agent_json) {
-                    tracing::warn!(
-                        agent = %agent_id,
-                        "kill switch: blocked agent attempted request — returning 403"
-                    );
-                    return Ok(interceptor::build_agent_blocked_response());
-                }
+        let status = match state.agent_status_cache.get(&agent_id) {
+            Some(cached) => {
+                state
+                    .metrics
+                    .agent_cache_hits
+                    .fetch_add(1, Ordering::Relaxed);
+                cached
             }
-            Ok(None) => {
-                // Agent not in registry — proceed (observability-only for unknown agents).
+            None => {
+                state
+                    .metrics
+                    .agent_cache_misses
+                    .fetch_add(1, Ordering::Relaxed);
+                let resolved = match govrix_scout_store::get_agent(pool, &agent_id).await {
+                    Ok(Some(agent_json)) => {
+                        if interceptor::agent_json_is_blocked(&agent_json) {
+                            AgentStatus::Blocked
+                        } else {
+                            AgentStatus::Allowed
+                        }
+                    }
+                    Ok(None) => AgentStatus::Allowed,
+                    Err(e) => {
+                        tracing::warn!(
+                            agent = %agent_id,
+                            error = %e,
+                            "kill switch: DB error — proceeding (fail-open) without caching"
+                        );
+                        // Don't cache a fail-open guess; just allow this one through.
+                        AgentStatus::Allowed
+                    }
+                };
+                state.agent_status_cache.insert(agent_id.clone(), resolved);
+                resolved
             }
-            Err(e) => {
-                // DB error — fail-open: log and proceed rather than blocking traffic.
-                tracing::warn!(
-                    agent = %agent_id,
-                    error = %e,
-                    "kill switch: DB error checking agent status — proceeding (fail-open)"
-                );
-            }
+        };
+        if status == AgentStatus::Blocked {
+            tracing::warn!(
+                agent = %agent_id,
+                "kill switch: blocked agent attempted request — returning 403"
+            );
+            return Ok(interceptor::build_agent_blocked_response());
         }
     }
 
@@ -142,6 +191,7 @@ async fn forward_buffered(
 ) -> Result<Response<Full<Bytes>>, Box<dyn std::error::Error + Send + Sync>> {
     let resp = upstream::forward(parts, body_bytes, protocol, &state.upstream_urls).await?;
     let latency_ms = start.elapsed().as_millis() as u32;
+    state.metrics.observe_upstream_latency_ms(latency_ms as u64);
 
     let status = resp.status().as_u16();
 
@@ -198,6 +248,7 @@ async fn forward_streaming(
         upstream::forward_streaming_collect(parts, body_bytes, protocol, &state.upstream_urls)
             .await?;
     let latency_ms = start.elapsed().as_millis() as u32;
+    state.metrics.observe_upstream_latency_ms(latency_ms as u64);
 
     tracing::debug!(
         agent = %ctx.agent_id,

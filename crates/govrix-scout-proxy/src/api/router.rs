@@ -257,11 +257,18 @@ async fn dashboard() -> Html<&'static str> {
 ///
 /// GET /metrics
 async fn metrics_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
-    let requests = state.metrics.requests_total.load(Ordering::Relaxed);
-    let events = state.metrics.events_total.load(Ordering::Relaxed);
-    let agents = state.metrics.agents_active.load(Ordering::Relaxed);
+    use crate::events::UPSTREAM_LATENCY_BUCKETS_MS;
 
-    let body = format!(
+    let m = &state.metrics;
+    let requests = m.requests_total.load(Ordering::Relaxed);
+    let events = m.events_total.load(Ordering::Relaxed);
+    let agents = m.agents_active.load(Ordering::Relaxed);
+    let dropped = m.events_dropped_total.load(Ordering::Relaxed);
+    let depth = m.channel_depth.load(Ordering::Relaxed);
+    let cache_ratio = m.agent_cache_hit_ratio();
+
+    let mut body = String::new();
+    body.push_str(&format!(
         "# HELP govrix_scout_requests_total Total proxy requests intercepted\n\
          # TYPE govrix_scout_requests_total counter\n\
          govrix_scout_requests_total {requests}\n\
@@ -270,8 +277,37 @@ async fn metrics_handler(State(state): State<Arc<AppState>>) -> impl IntoRespons
          govrix_scout_events_total {events}\n\
          # HELP govrix_scout_agents_active Distinct agents seen since process start\n\
          # TYPE govrix_scout_agents_active gauge\n\
-         govrix_scout_agents_active {agents}\n"
+         govrix_scout_agents_active {agents}\n\
+         # HELP govrix_scout_events_dropped_total Events dropped by the fire-and-forget channel\n\
+         # TYPE govrix_scout_events_dropped_total counter\n\
+         govrix_scout_events_dropped_total {dropped}\n\
+         # HELP govrix_scout_channel_depth Approximate current event channel depth\n\
+         # TYPE govrix_scout_channel_depth gauge\n\
+         govrix_scout_channel_depth {depth}\n\
+         # HELP govrix_scout_agent_cache_hit_ratio Kill-switch cache hit ratio in [0,1]\n\
+         # TYPE govrix_scout_agent_cache_hit_ratio gauge\n\
+         govrix_scout_agent_cache_hit_ratio {cache_ratio:.6}\n",
+    ));
+
+    // Upstream latency histogram (Prometheus exposition format).
+    body.push_str(
+        "# HELP govrix_scout_upstream_latency_ms Upstream forward latency in milliseconds\n\
+         # TYPE govrix_scout_upstream_latency_ms histogram\n",
     );
+    for (i, b) in UPSTREAM_LATENCY_BUCKETS_MS.iter().enumerate() {
+        let v = m.upstream_latency_buckets[i].load(Ordering::Relaxed);
+        body.push_str(&format!(
+            "govrix_scout_upstream_latency_ms_bucket{{le=\"{b}\"}} {v}\n"
+        ));
+    }
+    let inf = m.upstream_latency_buckets[10].load(Ordering::Relaxed);
+    body.push_str(&format!(
+        "govrix_scout_upstream_latency_ms_bucket{{le=\"+Inf\"}} {inf}\n"
+    ));
+    let sum = m.upstream_latency_sum_ms.load(Ordering::Relaxed);
+    let count = m.upstream_latency_count.load(Ordering::Relaxed);
+    body.push_str(&format!("govrix_scout_upstream_latency_ms_sum {sum}\n"));
+    body.push_str(&format!("govrix_scout_upstream_latency_ms_count {count}\n"));
 
     (
         axum::http::StatusCode::OK,

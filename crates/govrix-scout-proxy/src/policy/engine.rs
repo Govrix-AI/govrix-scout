@@ -344,9 +344,7 @@ impl PolicyEngine {
         // Now apply rows to in-memory tracker — synchronous, no await.
         if let Ok(mut tracker) = self.budget_tracker.lock() {
             for (agent_id, tokens, cost_usd) in rows {
-                let usage = tracker.daily_usage_entry(&agent_id);
-                usage.tokens = usage.tokens.saturating_add(tokens as u64);
-                usage.cost_usd += cost_usd;
+                tracker.apply_usage_snapshot(&agent_id, tokens as u64, cost_usd);
             }
             tracing::info!(
                 agents_loaded = count,

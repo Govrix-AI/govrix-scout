@@ -15,9 +15,8 @@ use tokio::sync::mpsc;
 
 /// SSE chunk for the analysis pipeline.
 ///
-/// Used by TeeSender for the SSE stream-through pattern.
-/// Phase 1 will use this for real-time streaming with tokio channels.
-#[allow(dead_code)]
+/// Mirrored to the analysis path by `TeeSender` while the proxy continues
+/// forwarding the same bytes to the client.
 #[derive(Debug)]
 pub struct SseChunk {
     /// Raw bytes of the SSE chunk (may contain multiple `data:` lines).
@@ -26,31 +25,27 @@ pub struct SseChunk {
     pub is_final: bool,
 }
 
-/// Configuration for the analysis tee channel.
+/// Unbounded mirror sender for SSE chunks.
 ///
-/// Phase 1 will use this for real-time SSE stream-through.
-#[allow(dead_code)]
+/// Uses an **unbounded** channel because the analysis side must never apply
+/// back-pressure to the client-facing streaming path. The receiver task is
+/// expected to keep up; in pathological cases we'd rather grow memory briefly
+/// than slow the client.
 pub struct TeeSender {
-    tx: mpsc::Sender<SseChunk>,
+    tx: mpsc::UnboundedSender<SseChunk>,
 }
 
-#[allow(dead_code)]
 impl TeeSender {
-    /// Create a new tee sender with a bounded channel.
-    ///
-    /// The channel capacity limits memory usage. When full, chunks are dropped
-    /// (analysis is lossy) rather than blocking the streaming path.
-    pub fn new(capacity: usize) -> (Self, mpsc::Receiver<SseChunk>) {
-        let (tx, rx) = mpsc::channel(capacity);
+    /// Create a new tee sender / receiver pair.
+    pub fn new() -> (Self, mpsc::UnboundedReceiver<SseChunk>) {
+        let (tx, rx) = mpsc::unbounded_channel();
         (Self { tx }, rx)
     }
 
     /// Send a chunk to the analysis pipeline without blocking.
-    ///
-    /// If the channel is full, the chunk is silently dropped.
-    /// The proxy always forwards to the client regardless.
+    /// Errors (receiver dropped) are silently ignored — fail-open.
     pub fn tee(&self, bytes: Bytes, is_final: bool) {
-        let _ = self.tx.try_send(SseChunk { bytes, is_final });
+        let _ = self.tx.send(SseChunk { bytes, is_final });
     }
 }
 
@@ -165,11 +160,10 @@ mod tests {
     }
 
     #[test]
-    fn tee_sender_does_not_block_on_full_channel() {
-        let (tee, _rx) = TeeSender::new(2);
-        // Send 5 chunks into a capacity-2 channel — must not panic or block
-        for i in 0..5 {
-            tee.tee(Bytes::from(format!("chunk {}", i)), i == 4);
+    fn tee_sender_unbounded_never_blocks() {
+        let (tee, _rx) = TeeSender::new();
+        for i in 0..1000 {
+            tee.tee(Bytes::from(format!("chunk {}", i)), i == 999);
         }
     }
 

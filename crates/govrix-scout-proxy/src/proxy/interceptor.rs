@@ -17,21 +17,32 @@ use bytes::Bytes;
 use chrono::Utc;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use tokio::sync::Mutex;
 
 use govrix_scout_common::models::event::{AgentEvent, EventDirection, Provider};
 use govrix_scout_common::protocols::Protocol;
+use moka::sync::Cache;
 
 use crate::events::{compute_lineage_hash, EventSender, Metrics, SessionTracker};
 use crate::policy::PolicyHook;
 use crate::proxy::streaming::SseAccumulator;
 use crate::proxy::upstream::UpstreamUrls;
 
-/// Shared interceptor state — session tracker and event sender.
+/// Agent status cached in the kill-switch cache.
 ///
-/// Wrapped in Arc<Mutex<>> for safe concurrent access across request handlers.
+/// `Blocked` is fast-path 403; `Allowed` proceeds to upstream. The TTL is
+/// applied by the moka cache itself.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AgentStatus {
+    Allowed,
+    Blocked,
+}
+
+/// Shared interceptor state — session tracker, event sender, caches.
+///
+/// `SessionTracker` is lock-free (backed by `DashMap`) so the whole struct is
+/// accessed via `Arc<InterceptorState>` without any wrapping mutex.
 pub struct InterceptorState {
-    pub session_tracker: Mutex<SessionTracker>,
+    pub session_tracker: SessionTracker,
     pub event_sender: EventSender,
     /// Shared Prometheus-facing metrics counters.
     pub metrics: Arc<Metrics>,
@@ -40,10 +51,25 @@ pub struct InterceptorState {
     /// Configurable upstream base URLs for each provider.
     pub upstream_urls: Arc<UpstreamUrls>,
     /// Optional database pool for agent status look-ups (kill switch).
-    ///
-    /// When `None` (e.g. proxy started without a database), the kill switch
-    /// check is skipped and the request is forwarded (fail-open).
     pub db_pool: Option<govrix_scout_store::StorePool>,
+    /// Kill-switch status cache, keyed by `agent_id`. TTL configured at
+    /// construction (defaults to 30s). Misses fall through to the DB.
+    pub agent_status_cache: Arc<Cache<String, AgentStatus>>,
+    /// Maximum request body size (bytes) to tee for capture/audit.
+    /// Bodies larger than this are forwarded as-is without populating
+    /// `event.payload`.
+    pub max_body_tee_bytes: usize,
+    /// End-to-end proxy handler timeout in seconds.
+    pub request_timeout_secs: u64,
+}
+
+fn default_agent_status_cache(ttl_secs: u64) -> Arc<Cache<String, AgentStatus>> {
+    Arc::new(
+        Cache::builder()
+            .max_capacity(10_000)
+            .time_to_live(std::time::Duration::from_secs(ttl_secs.max(1)))
+            .build(),
+    )
 }
 
 impl InterceptorState {
@@ -53,12 +79,15 @@ impl InterceptorState {
         policy_hook: Arc<dyn PolicyHook>,
     ) -> Self {
         Self {
-            session_tracker: Mutex::new(SessionTracker::new()),
+            session_tracker: SessionTracker::new(),
             event_sender,
             metrics,
             policy_hook,
             upstream_urls: Arc::new(UpstreamUrls::default()),
             db_pool: None,
+            agent_status_cache: default_agent_status_cache(30),
+            max_body_tee_bytes: 1_048_576,
+            request_timeout_secs: 300,
         }
     }
 
@@ -70,12 +99,15 @@ impl InterceptorState {
         upstream_urls: UpstreamUrls,
     ) -> Self {
         Self {
-            session_tracker: Mutex::new(SessionTracker::new()),
+            session_tracker: SessionTracker::new(),
             event_sender,
             metrics,
             policy_hook,
             upstream_urls: Arc::new(upstream_urls),
             db_pool: None,
+            agent_status_cache: default_agent_status_cache(30),
+            max_body_tee_bytes: 1_048_576,
+            request_timeout_secs: 300,
         }
     }
 
@@ -91,13 +123,29 @@ impl InterceptorState {
         db_pool: govrix_scout_store::StorePool,
     ) -> Self {
         Self {
-            session_tracker: Mutex::new(SessionTracker::new()),
+            session_tracker: SessionTracker::new(),
             event_sender,
             metrics,
             policy_hook,
             upstream_urls: Arc::new(upstream_urls),
             db_pool: Some(db_pool),
+            agent_status_cache: default_agent_status_cache(30),
+            max_body_tee_bytes: 1_048_576,
+            request_timeout_secs: 300,
         }
+    }
+
+    /// Override config knobs after construction.
+    pub fn with_config(
+        mut self,
+        max_body_tee_bytes: usize,
+        kill_switch_ttl_secs: u64,
+        request_timeout_secs: u64,
+    ) -> Self {
+        self.agent_status_cache = default_agent_status_cache(kill_switch_ttl_secs);
+        self.max_body_tee_bytes = max_body_tee_bytes;
+        self.request_timeout_secs = request_timeout_secs;
+        self
     }
 }
 
@@ -122,12 +170,11 @@ pub struct RequestContext {
 /// This is the "outbound" side of the event — logged when a request is
 /// intercepted and forwarded upstream.
 pub async fn log_request_event(ctx: &RequestContext, state: &InterceptorState) {
-    // Assign session_id and compute lineage hash
+    // Assign session_id and compute lineage hash — single atomic DashMap op.
     let event_id = uuid::Uuid::now_v7();
-    let (session_id, prev_hash) = {
-        let mut tracker = state.session_tracker.lock().await;
-        tracker.get_or_create(&ctx.agent_id, &event_id)
-    };
+    let (session_id, prev_hash) = state
+        .session_tracker
+        .get_or_create(&ctx.agent_id, &event_id);
 
     let timestamp_ms = ctx.request_time.timestamp_millis();
     let lineage_hash = compute_lineage_hash(&prev_hash, &event_id, &ctx.agent_id, timestamp_ms);
@@ -190,7 +237,7 @@ pub async fn log_request_event(ctx: &RequestContext, state: &InterceptorState) {
 
     // ── Populate payload for PII detection and audit ─────────────────────────
     // Only set if body is valid JSON and within 100 KB to avoid DB bloat.
-    if ctx.request_body.len() <= 100 * 1024 {
+    if ctx.request_body.len() <= state.max_body_tee_bytes {
         if let Ok(parsed) = serde_json::from_slice::<serde_json::Value>(&ctx.request_body) {
             event.payload = Some(parsed);
         }
@@ -199,11 +246,10 @@ pub async fn log_request_event(ctx: &RequestContext, state: &InterceptorState) {
     // ── Policy hook: compute compliance_tag ──────────────────────────────────
     event.compliance_tag = state.policy_hook.compliance_tag(&event);
 
-    // Update session lineage
-    {
-        let mut tracker = state.session_tracker.lock().await;
-        tracker.record_event(&ctx.agent_id, event_id, lineage_hash);
-    }
+    // Update session lineage (single atomic DashMap op).
+    state
+        .session_tracker
+        .record_event(&ctx.agent_id, event_id, lineage_hash);
 
     // Increment the Prometheus requests counter — one per intercepted request.
     state.metrics.requests_total.fetch_add(1, Ordering::Relaxed);
@@ -223,10 +269,9 @@ pub async fn log_response_event(
     latency_ms: u32,
 ) {
     let event_id = uuid::Uuid::now_v7();
-    let (session_id, prev_hash) = {
-        let mut tracker = state.session_tracker.lock().await;
-        tracker.get_or_create(&ctx.agent_id, &event_id)
-    };
+    let (session_id, prev_hash) = state
+        .session_tracker
+        .get_or_create(&ctx.agent_id, &event_id);
 
     let timestamp_ms = Utc::now().timestamp_millis();
     let lineage_hash = compute_lineage_hash(&prev_hash, &event_id, &ctx.agent_id, timestamp_ms);
@@ -324,7 +369,7 @@ pub async fn log_response_event(
 
     // ── Populate payload for PII detection and audit ─────────────────────────
     // Only set if body is valid JSON and within 100 KB to avoid DB bloat.
-    if response_body.len() <= 100 * 1024 {
+    if response_body.len() <= state.max_body_tee_bytes {
         if let Ok(parsed) = serde_json::from_slice::<serde_json::Value>(response_body) {
             event.payload = Some(parsed);
         }
@@ -343,11 +388,10 @@ pub async fn log_response_event(
         .policy_hook
         .record_usage(&ctx.agent_id, tokens, cost, state.db_pool.clone());
 
-    // Update session lineage
-    {
-        let mut tracker = state.session_tracker.lock().await;
-        tracker.record_event(&ctx.agent_id, event_id, lineage_hash);
-    }
+    // Update session lineage (single atomic DashMap op).
+    state
+        .session_tracker
+        .record_event(&ctx.agent_id, event_id, lineage_hash);
 
     // Fire-and-forget send
     state.event_sender.send(event);

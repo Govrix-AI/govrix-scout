@@ -34,6 +34,100 @@ impl AgentFilter {
 
 // ── Write path ────────────────────────────────────────────────────────────────
 
+/// Aggregated per-agent stats from a batch of events.
+///
+/// Used by [`upsert_agents_batch`] to fold many events' worth of stats
+/// into a single DB round-trip.
+#[derive(Debug, Clone, Default)]
+pub struct AgentBatchStats {
+    pub agent_id: String,
+    pub last_model: Option<String>,
+    pub tokens_in: i64,
+    pub tokens_out: i64,
+    pub cost_usd: f64,
+    pub request_count: i64,
+}
+
+/// Upsert per-agent stats from a batch in a single UNNEST round-trip.
+///
+/// Adds the provided per-batch deltas onto the existing agent rows. New agents
+/// are inserted with the provided deltas as their starting totals. Other
+/// columns (name, type, labels, …) are left untouched on conflict.
+pub async fn upsert_agents_batch(
+    pool: &StorePool,
+    stats: &[AgentBatchStats],
+) -> Result<usize, sqlx::Error> {
+    if stats.is_empty() {
+        return Ok(0);
+    }
+
+    let now = Utc::now();
+    let n = stats.len();
+    let mut ids: Vec<String> = Vec::with_capacity(n);
+    let mut last_models: Vec<Option<String>> = Vec::with_capacity(n);
+    let mut tokens_in: Vec<i64> = Vec::with_capacity(n);
+    let mut tokens_out: Vec<i64> = Vec::with_capacity(n);
+    let mut costs: Vec<f64> = Vec::with_capacity(n);
+    let mut request_counts: Vec<i64> = Vec::with_capacity(n);
+
+    for s in stats {
+        ids.push(s.agent_id.clone());
+        last_models.push(s.last_model.clone());
+        tokens_in.push(s.tokens_in);
+        tokens_out.push(s.tokens_out);
+        costs.push(s.cost_usd);
+        request_counts.push(s.request_count);
+    }
+
+    sqlx::query(
+        r#"
+        INSERT INTO agents (
+            id, name, agent_type, status,
+            first_seen_at, last_seen_at,
+            total_requests, total_tokens_in, total_tokens_out, total_cost_usd,
+            last_model_used,
+            created_at, updated_at
+        )
+        SELECT
+            t.id,
+            t.id AS name,
+            'unknown' AS agent_type,
+            'active' AS status,
+            $7::timestamptz AS first_seen_at,
+            $7::timestamptz AS last_seen_at,
+            t.req_count,
+            t.tin,
+            t.tout,
+            t.cost,
+            t.last_model,
+            $7::timestamptz,
+            $7::timestamptz
+        FROM UNNEST(
+            $1::text[], $2::text[], $3::int8[], $4::int8[], $5::float8[], $6::int8[]
+        ) AS t(id, last_model, tin, tout, cost, req_count)
+        ON CONFLICT (id) DO UPDATE SET
+            last_seen_at     = EXCLUDED.last_seen_at,
+            total_requests   = agents.total_requests   + EXCLUDED.total_requests,
+            total_tokens_in  = agents.total_tokens_in  + EXCLUDED.total_tokens_in,
+            total_tokens_out = agents.total_tokens_out + EXCLUDED.total_tokens_out,
+            total_cost_usd   = agents.total_cost_usd   + EXCLUDED.total_cost_usd,
+            last_model_used  = COALESCE(EXCLUDED.last_model_used, agents.last_model_used),
+            updated_at       = EXCLUDED.updated_at
+        "#,
+    )
+    .bind(&ids)
+    .bind(&last_models)
+    .bind(&tokens_in)
+    .bind(&tokens_out)
+    .bind(&costs)
+    .bind(&request_counts)
+    .bind(now)
+    .execute(pool)
+    .await?;
+
+    Ok(n)
+}
+
 /// Upsert an agent record.
 ///
 /// On conflict (same `id`), updates `last_seen_at`, `status`, `total_requests`,

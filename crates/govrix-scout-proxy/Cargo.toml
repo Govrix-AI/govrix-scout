@@ -67,5 +67,10 @@ rust_decimal = { version = "1", features = ["serde-float"] }
 
 # Atomic counters for metrics (use standard library atomics, no extra dep needed)
 
+# Concurrent / cache primitives (v2 scale)
+dashmap = { workspace = true }
+moka = { workspace = true }
+lru = { workspace = true }
+
 [dev-dependencies]
 tokio = { workspace = true }

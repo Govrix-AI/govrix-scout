@@ -20,14 +20,17 @@ pub mod traces;
 
 // ── Top-level re-exports ──────────────────────────────────────────────────────
 
-pub use db::{connect, health_check, StorePool};
+pub use db::{connect, connect_split, connect_with_max, health_check, StorePool};
 
 // Filter types
 pub use agents::AgentFilter;
 pub use events::EventFilter;
 
 // Re-export commonly used store functions so callers don't need to know sub-modules
-pub use agents::{get_agent, list_agents, retire_agent, update_agent_metadata, upsert_agent};
+pub use agents::{
+    get_agent, list_agents, retire_agent, update_agent_metadata, upsert_agent, upsert_agents_batch,
+    AgentBatchStats,
+};
 pub use events::{
     get_agent_runs, get_agent_violations, get_event, get_events_for_agent, get_session_events,
     list_events,

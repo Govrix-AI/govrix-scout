@@ -43,42 +43,53 @@ async fn main() -> anyhow::Result<()> {
         "Govrix Scout starting"
     );
 
-    // ── Database pool ─────────────────────────────────────────────────────────
-    // Attempt to connect to PostgreSQL. On failure, fall back to no-db mode
-    // so the proxy still starts and forwards traffic (fail-open).
-    let pool_result = govrix_scout_store::connect(&config.database).await;
-    let pool = match pool_result {
-        Ok(p) => {
-            tracing::info!("PostgreSQL pool established");
-            Some(p)
+    // ── Database pools ────────────────────────────────────────────────────────
+    // Split into `api_pool` (read-heavy) and `writer_pool` (hot-path writes).
+    // On failure, fall back to no-db mode so the proxy still forwards traffic.
+    let pool_result = govrix_scout_store::connect_split(&config.database).await;
+    let (api_pool, writer_pool) = match pool_result {
+        Ok((api, writer)) => {
+            tracing::info!("PostgreSQL pools established (api + writer split)");
+            (Some(api), Some(writer))
         }
         Err(e) => {
             tracing::warn!(
                 error = %e,
                 "PostgreSQL unavailable — API will serve stub responses; proxy continues"
             );
-            None
+            (None, None)
         }
     };
+    // `kill_switch_pool` is a cheap clone of the api pool used by the kill-switch.
+    let kill_switch_pool = api_pool.clone();
 
     // ── Event channel ─────────────────────────────────────────────────────────
-    // Bounded channel: proxy sends fire-and-forget, background task drains
-    let (event_sender, event_rx) = events::create_channel();
+    let (event_sender, event_rx) =
+        events::create_channel_with_capacity(config.events.channel_capacity);
     let event_metrics = event_sender.metrics().clone();
 
     // Shared Prometheus-facing metrics counters
     let metrics = events::Metrics::new();
+    let event_sender = event_sender.with_prometheus(metrics.clone());
 
-    // Spawn background event writer (clone pool so API server can still use the original)
-    let writer_pool = pool.clone();
-    tokio::spawn(events::run_background_writer(
+    // Spawn writer pool — N tasks pulling batches from a shared receiver.
+    let writer_cfg = events::WriterConfig {
+        writer_tasks: config.events.writer_tasks,
+        batch_size: config.events.batch_size,
+        batch_interval_ms: config.events.batch_interval_ms,
+    };
+    let _writer_handles = events::spawn_writer_pool(
         event_rx,
         event_metrics,
         writer_pool,
         metrics.clone(),
-    ));
+        writer_cfg,
+    );
     tracing::info!(
-        capacity = events::EVENT_CHANNEL_CAPACITY,
+        capacity = config.events.channel_capacity,
+        writer_tasks = config.events.writer_tasks,
+        batch_size = config.events.batch_size,
+        batch_interval_ms = config.events.batch_interval_ms,
         "event channel initialized"
     );
 
@@ -121,10 +132,7 @@ async fn main() -> anyhow::Result<()> {
     };
 
     // ── Budget counter pre-load ───────────────────────────────────────────────
-    // Load today's persisted budget counters from `budget_daily` into the
-    // in-memory tracker so enforcement limits survive proxy restarts.
-    // Fail-open: DB unavailability is logged and counters start from zero.
-    if let Some(ref p) = pool {
+    if let Some(ref p) = api_pool {
         policy_engine.load_budget_from_db(p).await;
     }
 
@@ -132,11 +140,8 @@ async fn main() -> anyhow::Result<()> {
         std::sync::Arc::new(policy_engine);
 
     // ── Proxy server ──────────────────────────────────────────────────────────
-    // Pass the event sender and metrics into the proxy for fire-and-forget event logging.
-    // Also pass a clone of the DB pool so the proxy can enforce the kill switch.
     let proxy_event_sender = event_sender.clone();
     let proxy_metrics = metrics.clone();
-    let proxy_pool = pool.clone(); // None when DB is unavailable — proxy runs fail-open
     let upstream_urls = proxy::UpstreamUrls {
         openai: config.proxy.upstream_openai.clone(),
         anthropic: config.proxy.upstream_anthropic.clone(),
@@ -147,18 +152,41 @@ async fn main() -> anyhow::Result<()> {
         anthropic = %upstream_urls.anthropic,
         "upstream URLs configured"
     );
-    let proxy_handle = tokio::spawn(async move {
-        if let Err(e) = proxy::serve_full_with_pool(
-            proxy_addr,
+
+    // Build the interceptor state explicitly so we can apply config knobs.
+    let interceptor_state = if let Some(pool) = kill_switch_pool {
+        proxy::InterceptorState::with_pool_and_upstream_urls(
             proxy_event_sender,
             proxy_metrics,
             policy_hook,
             upstream_urls,
-            proxy_pool,
+            pool,
         )
-        .await
-        {
-            tracing::error!("proxy server error: {}", e);
+    } else {
+        proxy::InterceptorState::with_upstream_urls(
+            proxy_event_sender,
+            proxy_metrics,
+            policy_hook,
+            upstream_urls,
+        )
+    }
+    .with_config(
+        config.proxy.max_body_tee_bytes,
+        config.proxy.kill_switch_ttl_secs,
+        config.proxy.request_timeout_secs,
+    );
+    let interceptor_state = std::sync::Arc::new(interceptor_state);
+
+    // Graceful shutdown channel: flipped to true by Ctrl-C handler.
+    let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
+
+    let proxy_handle = tokio::spawn({
+        let state = interceptor_state.clone();
+        let shutdown_rx = shutdown_rx.clone();
+        async move {
+            if let Err(e) = proxy::serve_state(proxy_addr, state, Some(shutdown_rx)).await {
+                tracing::error!("proxy server error: {}", e);
+            }
         }
     });
 
@@ -166,7 +194,7 @@ async fn main() -> anyhow::Result<()> {
     let api_config = config.clone();
     let api_metrics = metrics.clone();
     let api_handle = tokio::spawn(async move {
-        let result = match pool {
+        let result = match api_pool {
             Some(p) => api::serve_with_pool(api_addr, p, api_config, api_metrics).await,
             None => api::serve(api_addr).await,
         };
@@ -175,7 +203,7 @@ async fn main() -> anyhow::Result<()> {
         }
     });
 
-    // Wait for either server to exit (both should run forever in normal operation)
+    // ── Shutdown: SIGINT/Ctrl-C signals the watch channel ────────────────────
     tokio::select! {
         _ = proxy_handle => {
             tracing::warn!("proxy server exited unexpectedly");
@@ -184,7 +212,11 @@ async fn main() -> anyhow::Result<()> {
             tracing::warn!("API server exited unexpectedly");
         }
         _ = tokio::signal::ctrl_c() => {
-            tracing::info!("received SIGINT, shutting down");
+            tracing::info!("received SIGINT — signalling shutdown");
+            let _ = shutdown_tx.send(true);
+            // Brief grace period to let the proxy drain the mpsc and writers flush.
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            tracing::info!("shutdown complete");
         }
     }
 

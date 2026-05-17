@@ -16,6 +16,7 @@ pub struct Config {
     pub dashboard: DashboardConfig,
     pub retention: RetentionConfig,
     pub telemetry: TelemetryConfig,
+    pub events: EventsConfig,
 }
 
 /// Proxy server configuration.
@@ -34,6 +35,12 @@ pub struct ProxyConfig {
     /// Default upstream base URL (overridden per-provider).
     pub upstream_openai: String,
     pub upstream_anthropic: String,
+    /// End-to-end proxy handler timeout in seconds. Long-running streaming
+    /// responses are bounded by this; default 300s.
+    pub request_timeout_secs: u64,
+    /// Kill-switch (agent status) cache TTL in seconds. The proxy caches
+    /// agent status to avoid a DB round-trip on every request.
+    pub kill_switch_ttl_secs: u64,
 }
 
 /// Database configuration.
@@ -41,12 +48,44 @@ pub struct ProxyConfig {
 pub struct DatabaseConfig {
     /// PostgreSQL connection URL. Use `GOVRIX_DATABASE_URL` env var in production.
     pub url: String,
-    /// Maximum connections in the pool.
+    /// Maximum connections in the pool (kept for backward compat — the proxy
+    /// now splits into `api_pool_max` + `writer_pool_max`; this value is used
+    /// when neither override is set).
     pub max_connections: u32,
     /// Minimum connections to keep alive.
     pub min_connections: u32,
     /// Connection acquire timeout in seconds.
     pub connect_timeout_secs: u64,
+    /// Maximum connections for the API/read pool (default 30).
+    pub api_pool_max: u32,
+    /// Maximum connections for the writer/hot-path pool (default 70).
+    /// Sum of `api_pool_max` + `writer_pool_max` should stay under Postgres's
+    /// `max_connections` limit (typically 100).
+    pub writer_pool_max: u32,
+}
+
+/// Event pipeline configuration (channel, writer tasks, batching).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EventsConfig {
+    /// Capacity of the bounded mpsc event channel.
+    pub channel_capacity: usize,
+    /// Number of background writer tasks (each pulls batches from the channel).
+    pub writer_tasks: usize,
+    /// Maximum events per batch before flushing.
+    pub batch_size: usize,
+    /// Maximum interval (ms) to wait before flushing a partial batch.
+    pub batch_interval_ms: u64,
+}
+
+impl Default for EventsConfig {
+    fn default() -> Self {
+        Self {
+            channel_capacity: 100_000,
+            writer_tasks: 4,
+            batch_size: 500,
+            batch_interval_ms: 50,
+        }
+    }
 }
 
 /// REST API server configuration.
@@ -104,6 +143,7 @@ impl Default for Config {
             dashboard: DashboardConfig::default(),
             retention: RetentionConfig::default(),
             telemetry: TelemetryConfig::default(),
+            events: EventsConfig::default(),
         }
     }
 }
@@ -118,6 +158,8 @@ impl Default for ProxyConfig {
             upstream_timeout_ms: 30_000,
             upstream_openai: "https://api.openai.com".to_string(),
             upstream_anthropic: "https://api.anthropic.com".to_string(),
+            request_timeout_secs: 300,
+            kill_switch_ttl_secs: 30,
         }
     }
 }
@@ -129,6 +171,8 @@ impl Default for DatabaseConfig {
             max_connections: 20,
             min_connections: 2,
             connect_timeout_secs: 10,
+            api_pool_max: 30,
+            writer_pool_max: 70,
         }
     }
 }

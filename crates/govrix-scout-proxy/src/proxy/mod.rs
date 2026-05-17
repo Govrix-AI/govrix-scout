@@ -18,7 +18,7 @@ use std::sync::Arc;
 
 use crate::events::{EventSender, Metrics};
 use crate::policy::{NoOpPolicy, PolicyHook};
-use interceptor::InterceptorState;
+pub use interceptor::InterceptorState;
 pub use upstream::UpstreamUrls;
 
 /// Start the hyper proxy server with default upstream URLs.
@@ -86,6 +86,31 @@ pub async fn serve_full_with_pool(
     upstream_urls: UpstreamUrls,
     db_pool: Option<govrix_scout_store::StorePool>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let state = if let Some(pool) = db_pool {
+        InterceptorState::with_pool_and_upstream_urls(
+            event_sender,
+            metrics,
+            policy_hook,
+            upstream_urls,
+            pool,
+        )
+    } else {
+        InterceptorState::with_upstream_urls(event_sender, metrics, policy_hook, upstream_urls)
+    };
+    serve_state(addr, Arc::new(state), None).await
+}
+
+/// Start the hyper proxy with a fully-built `InterceptorState`.
+///
+/// Use this when callers need to tweak `max_body_tee_bytes`, the kill-switch
+/// cache TTL, or the request-timeout via `InterceptorState::with_config`.
+/// Pass `shutdown` to enable graceful shutdown — when the receiver fires,
+/// the listener stops accepting new connections and the function returns.
+pub async fn serve_state(
+    addr: std::net::SocketAddr,
+    state: Arc<InterceptorState>,
+    shutdown: Option<tokio::sync::watch::Receiver<bool>>,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     use hyper::server::conn::http1;
     use hyper_util::rt::TokioIo;
     use tokio::net::TcpListener;
@@ -93,29 +118,24 @@ pub async fn serve_full_with_pool(
     let listener = TcpListener::bind(addr).await?;
     tracing::info!("proxy listening on {}", addr);
 
-    // Shared interceptor state — one instance for the whole server
-    let state = if let Some(pool) = db_pool {
-        Arc::new(InterceptorState::with_pool_and_upstream_urls(
-            event_sender,
-            metrics,
-            policy_hook,
-            upstream_urls,
-            pool,
-        ))
-    } else {
-        Arc::new(InterceptorState::with_upstream_urls(
-            event_sender,
-            metrics,
-            policy_hook,
-            upstream_urls,
-        ))
-    };
-
     loop {
-        let (stream, peer_addr) = listener.accept().await?;
-        let io = TokioIo::new(stream);
+        let accept = listener.accept();
+        let (stream, peer_addr) = match shutdown.clone() {
+            Some(mut rx) => tokio::select! {
+                res = accept => res?,
+                _ = rx.changed() => {
+                    if *rx.borrow() {
+                        tracing::info!("proxy: shutdown signal received — stopping accept loop");
+                        return Ok(());
+                    } else {
+                        continue;
+                    }
+                }
+            },
+            None => accept.await?,
+        };
 
-        // Clone Arc for this connection
+        let io = TokioIo::new(stream);
         let state_clone = Arc::clone(&state);
 
         tokio::spawn(async move {
@@ -125,7 +145,6 @@ pub async fn serve_full_with_pool(
             });
 
             if let Err(e) = http1::Builder::new().serve_connection(io, svc).await {
-                // Log but do not propagate — fail-open design
                 tracing::debug!("connection error from {}: {}", peer_addr, e);
             }
         });

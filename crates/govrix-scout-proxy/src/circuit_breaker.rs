@@ -20,8 +20,17 @@
 //! - All checks are fail-open: any internal error (mutex poison, overflow) returns
 //!   `None` (allow) so agent traffic is never blocked by a tracing fault.
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
+use std::num::NonZeroUsize;
 use std::time::{Duration, Instant};
+
+use lru::LruCache;
+
+/// Maximum entries kept in each circuit-breaker map.
+const CIRCUIT_BREAKER_CAP: usize = 50_000;
+
+/// Prune entries older than this when `prune_stale` runs.
+const PRUNE_STALE_AFTER: Duration = Duration::from_secs(60 * 60);
 
 // ── Block response ─────────────────────────────────────────────────────────────
 
@@ -72,8 +81,9 @@ pub enum BlockKind {
 ///
 /// This is the primary pattern for runaway agent loops.
 pub struct LoopDetector {
-    /// Per-(agent_id, tool_name) → ordered call timestamps.
-    windows: HashMap<(String, String), VecDeque<Instant>>,
+    /// Per-(agent_id, tool_name) → ordered call timestamps. Bounded by an LRU
+    /// so old/cold agent+tool pairs evict instead of growing without limit.
+    windows: LruCache<(String, String), VecDeque<Instant>>,
     /// Maximum allowed calls within the window before triggering.
     max_calls: usize,
     /// Duration of the sliding window in seconds.
@@ -84,7 +94,7 @@ impl LoopDetector {
     /// Create a new `LoopDetector` with defaults: max 5 calls per 60 seconds.
     pub fn new() -> Self {
         Self {
-            windows: HashMap::new(),
+            windows: LruCache::new(NonZeroUsize::new(CIRCUIT_BREAKER_CAP).unwrap()),
             max_calls: 5,
             window_secs: 60,
         }
@@ -93,9 +103,27 @@ impl LoopDetector {
     /// Create with custom limits.
     pub fn with_limits(max_calls: usize, window_secs: u64) -> Self {
         Self {
-            windows: HashMap::new(),
+            windows: LruCache::new(NonZeroUsize::new(CIRCUIT_BREAKER_CAP).unwrap()),
             max_calls,
             window_secs,
+        }
+    }
+
+    /// Remove entries whose most-recent timestamp is older than 1 hour.
+    /// Intended to be called periodically (every 60s) by a background task.
+    pub fn prune_stale(&mut self) {
+        let cutoff = Instant::now() - PRUNE_STALE_AFTER;
+        let stale: Vec<(String, String)> = self
+            .windows
+            .iter()
+            .filter_map(|(k, calls)| match calls.back() {
+                Some(t) if *t < cutoff => Some(k.clone()),
+                None => Some(k.clone()),
+                _ => None,
+            })
+            .collect();
+        for k in stale {
+            self.windows.pop(&k);
         }
     }
 
@@ -112,7 +140,10 @@ impl LoopDetector {
         let now = Instant::now();
         let cutoff = now - Duration::from_secs(self.window_secs);
 
-        let calls = self.windows.entry(key).or_default();
+        if self.windows.get_mut(&key).is_none() {
+            self.windows.put(key.clone(), VecDeque::new());
+        }
+        let calls = self.windows.get_mut(&key).expect("just inserted");
 
         // Evict timestamps outside the window
         while let Some(&front) = calls.front() {
@@ -146,7 +177,7 @@ impl LoopDetector {
     /// Clear the loop window for a given agent and tool (e.g. after session end).
     pub fn clear(&mut self, agent_id: &str, tool_name: &str) {
         self.windows
-            .remove(&(agent_id.to_string(), tool_name.to_string()));
+            .pop(&(agent_id.to_string(), tool_name.to_string()));
     }
 }
 
@@ -167,8 +198,8 @@ impl Default for LoopDetector {
 /// Requires at least `min_events` data points before triggering to avoid
 /// false positives on the first high-risk event.
 pub struct RiskCircuitBreaker {
-    /// Per-agent_id → ordered (timestamp, risk_score) pairs.
-    windows: HashMap<String, VecDeque<(Instant, f32)>>,
+    /// Per-agent_id → ordered (timestamp, risk_score) pairs. Bounded LRU.
+    windows: LruCache<String, VecDeque<(Instant, f32)>>,
     /// Duration of the sliding window in seconds (default: 300 = 5 minutes).
     window_secs: u64,
     /// Risk score threshold [0.0, 100.0] to trigger the breaker (default: 75.0).
@@ -181,7 +212,7 @@ impl RiskCircuitBreaker {
     /// Create a new `RiskCircuitBreaker` with defaults.
     pub fn new() -> Self {
         Self {
-            windows: HashMap::new(),
+            windows: LruCache::new(NonZeroUsize::new(CIRCUIT_BREAKER_CAP).unwrap()),
             window_secs: 300,
             threshold: 75.0,
             min_events: 3,
@@ -191,10 +222,27 @@ impl RiskCircuitBreaker {
     /// Create with custom settings.
     pub fn with_settings(window_secs: u64, threshold: f32, min_events: usize) -> Self {
         Self {
-            windows: HashMap::new(),
+            windows: LruCache::new(NonZeroUsize::new(CIRCUIT_BREAKER_CAP).unwrap()),
             window_secs,
             threshold,
             min_events,
+        }
+    }
+
+    /// Remove entries whose most-recent observation is older than 1 hour.
+    pub fn prune_stale(&mut self) {
+        let cutoff = Instant::now() - PRUNE_STALE_AFTER;
+        let stale: Vec<String> = self
+            .windows
+            .iter()
+            .filter_map(|(k, w)| match w.back() {
+                Some((ts, _)) if *ts < cutoff => Some(k.clone()),
+                None => Some(k.clone()),
+                _ => None,
+            })
+            .collect();
+        for k in stale {
+            self.windows.pop(&k);
         }
     }
 
@@ -203,7 +251,12 @@ impl RiskCircuitBreaker {
         let now = Instant::now();
         let cutoff = now - Duration::from_secs(self.window_secs);
 
-        let window = self.windows.entry(agent_id.to_string()).or_default();
+        let key = agent_id.to_string();
+        if self.windows.get_mut(&key).is_none() {
+            self.windows.put(key.clone(), VecDeque::new());
+        }
+        let window = self.windows.get_mut(&key).expect("just inserted");
+
         // Evict old entries
         while let Some(&(ts, _)) = window.front() {
             if ts < cutoff {
@@ -232,7 +285,7 @@ impl RiskCircuitBreaker {
     ///
     /// Returns `Some(block)` if the circuit breaker fires, `None` otherwise.
     pub fn check(&self, agent_id: &str) -> Option<CircuitBreakerBlock> {
-        let window = self.windows.get(agent_id)?;
+        let window = self.windows.peek(agent_id)?;
 
         if window.len() < self.min_events {
             return None;
@@ -260,6 +313,27 @@ impl Default for RiskCircuitBreaker {
     fn default() -> Self {
         Self::new()
     }
+}
+
+// ── Periodic prune helper ─────────────────────────────────────────────────────
+
+/// Spawn a background task that calls `prune_stale()` on the provided detector
+/// and breaker every 60 seconds. The handles are returned so callers can abort
+/// on shutdown.
+pub fn spawn_prune_task<F>(mut prune: F) -> tokio::task::JoinHandle<()>
+where
+    F: FnMut() + Send + 'static,
+{
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(Duration::from_secs(60));
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        // First tick fires immediately; skip it so we don't prune at t=0.
+        interval.tick().await;
+        loop {
+            interval.tick().await;
+            prune();
+        }
+    })
 }
 
 #[cfg(test)]
