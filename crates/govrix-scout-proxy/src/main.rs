@@ -72,12 +72,18 @@ async fn main() -> anyhow::Result<()> {
     let metrics = events::Metrics::new();
     let event_sender = event_sender.with_prometheus(metrics.clone());
 
+    // Anomaly alert broadcast channel — fan-out from writer pool to SSE subscribers.
+    let (alert_tx, _alert_rx0) = tokio::sync::broadcast::channel::<
+        govrix_scout_proxy::anomaly::AnomalyAlert,
+    >(events::ALERT_BROADCAST_CAPACITY);
+
     // Spawn writer pool — N tasks pulling batches from a shared receiver.
     let writer_cfg = events::WriterConfig {
         writer_tasks: config.events.writer_tasks,
         batch_size: config.events.batch_size,
         batch_interval_ms: config.events.batch_interval_ms,
         anomaly: config.anomaly.clone(),
+        alert_tx: Some(alert_tx.clone()),
     };
     tracing::info!(
         anomaly_enabled = config.anomaly.enabled,
@@ -200,9 +206,13 @@ async fn main() -> anyhow::Result<()> {
     // ── Management API server ─────────────────────────────────────────────────
     let api_config = config.clone();
     let api_metrics = metrics.clone();
+    let api_alert_tx = alert_tx.clone();
     let api_handle = tokio::spawn(async move {
         let result = match api_pool {
-            Some(p) => api::serve_with_pool(api_addr, p, api_config, api_metrics).await,
+            Some(p) => {
+                api::serve_with_pool_and_alerts(api_addr, p, api_config, api_metrics, api_alert_tx)
+                    .await
+            }
             None => api::serve(api_addr).await,
         };
         if let Err(e) = result {

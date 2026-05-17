@@ -1005,6 +1005,7 @@ dependencies = [
  "bytes",
  "chrono",
  "dashmap",
+ "futures-util",
  "govrix-scout-common",
  "govrix-scout-store",
  "hex",
@@ -1025,6 +1026,7 @@ dependencies = [
  "tdigest",
  "thiserror",
  "tokio",
+ "tokio-stream",
  "tower",
  "tower-http",
  "tracing",
@@ -2988,6 +2990,7 @@ dependencies = [
  "futures-core",
  "pin-project-lite",
  "tokio",
+ "tokio-util",
 ]
 
 [[package]]

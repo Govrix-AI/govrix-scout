@@ -71,6 +71,8 @@ rust_decimal = { version = "1", features = ["serde-float"] }
 dashmap = { workspace = true }
 moka = { workspace = true }
 lru = { workspace = true }
+tokio-stream = { workspace = true }
+futures-util = { workspace = true }
 
 # Anomaly v2: probabilistic sketches + multi-pattern matching
 # Note: `hyperloglog-rs 0.1` requires nightly features and does not build on

@@ -7,6 +7,7 @@ import {
   FileText,
   Settings,
   ShieldAlert,
+  AlertTriangle,
   ScrollText,
   ShieldCheck,
   Clapperboard,
@@ -38,6 +39,7 @@ const OBSERVABILITY_ITEMS: NavItem[] = [
 
 const GOVERNANCE_ITEMS: NavItem[] = [
   { to: '/risk',        label: 'Risk Overview', icon: ShieldAlert },
+  { to: '/anomalies',   label: 'Anomalies',     icon: AlertTriangle },
   { to: '/policies',    label: 'Policies',      icon: ScrollText },
   { to: '/compliance',  label: 'Compliance',    icon: ShieldCheck },
   { to: '/sessions',    label: 'Sessions',      icon: Clapperboard },

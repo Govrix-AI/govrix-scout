@@ -8,6 +8,7 @@
 //! - Data retention management
 
 pub mod agents;
+pub mod alerts;
 pub mod budget;
 pub mod compliance_queries;
 pub mod costs;
@@ -24,6 +25,9 @@ pub use db::{connect, connect_split, connect_with_max, health_check, StorePool};
 
 // Filter types
 pub use agents::AgentFilter;
+pub use alerts::{
+    acknowledge_alert, get_alert, insert_alerts_batch, list_alerts, AlertFilter, AlertRow, NewAlert,
+};
 pub use events::EventFilter;
 
 // Re-export commonly used store functions so callers don't need to know sub-modules

@@ -23,7 +23,9 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use govrix_scout_common::config::Config;
+use tokio::sync::broadcast;
 
+use crate::anomaly::AnomalyAlert;
 use crate::events::Metrics;
 
 /// Start the Axum management API server with database connectivity.
@@ -39,7 +41,18 @@ pub async fn serve_with_pool(
     config: Config,
     metrics: Arc<Metrics>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    serve_with_pool_and_routes(addr, pool, config, metrics, None).await
+    serve_with_pool_and_routes(addr, pool, config, metrics, None, None).await
+}
+
+/// Variant of `serve_with_pool` with an anomaly alert broadcast sender attached.
+pub async fn serve_with_pool_and_alerts(
+    addr: SocketAddr,
+    pool: govrix_scout_store::StorePool,
+    config: Config,
+    metrics: Arc<Metrics>,
+    alert_tx: broadcast::Sender<AnomalyAlert>,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    serve_with_pool_and_routes(addr, pool, config, metrics, None, Some(alert_tx)).await
 }
 
 /// Start the management API with extra routes merged into the base router.
@@ -53,8 +66,12 @@ pub async fn serve_with_pool_and_routes(
     config: Config,
     metrics: Arc<Metrics>,
     extra_routes: Option<axum::Router>,
+    alert_tx: Option<broadcast::Sender<AnomalyAlert>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let state = state::AppState::new(pool, config, metrics);
+    let state = match alert_tx {
+        Some(tx) => state::AppState::new_with_alerts(pool, config, metrics, tx),
+        None => state::AppState::new(pool, config, metrics),
+    };
     let mut app = router::create_router_with_auth(state);
 
     if let Some(extra) = extra_routes {

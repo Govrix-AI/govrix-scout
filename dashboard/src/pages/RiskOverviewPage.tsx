@@ -487,6 +487,156 @@ function PostureSection({ health, isLoading }: { health: PlatformHealth | undefi
   )
 }
 
+// ── Anomaly-alerts fallback (when /risk/overview is enterprise-only 404) ─────
+
+interface AnomalyAlertLite {
+  id: string
+  timestamp: string
+  agent_id: string
+  detector: string
+  severity: 'info' | 'warn' | 'critical'
+  score: number
+}
+
+function getAlertsApiKey(): string {
+  return (
+    (import.meta.env.VITE_API_KEY as string | undefined) ||
+    localStorage.getItem('govrix_api_key') ||
+    'govrix-local-dev'
+  )
+}
+
+async function fetchRecentAlerts(): Promise<AnomalyAlertLite[]> {
+  const apiBase = (import.meta.env.VITE_API_URL as string | undefined) ?? ''
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+  const res = await fetch(`${apiBase}/api/v1/alerts?since=${encodeURIComponent(since)}&limit=500`, {
+    headers: { Authorization: `Bearer ${getAlertsApiKey()}` },
+  })
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  const body = await res.json()
+  return (body?.data ?? []) as AnomalyAlertLite[]
+}
+
+function RiskOverviewFromAlerts({
+  health,
+  healthLoading,
+  healthError,
+}: {
+  health: PlatformHealth | undefined
+  healthLoading: boolean
+  healthError: unknown
+}) {
+  const { data: alerts, isLoading: alertsLoading, error: alertsError } = useQuery({
+    queryKey: ['anomaly-alerts-24h'],
+    queryFn: fetchRecentAlerts,
+    staleTime: 15_000,
+    retry: 1,
+  })
+
+  if (alertsError) {
+    return (
+      <div className="space-y-6 page-enter">
+        <div>
+          <h1 className="text-lg font-display font-bold text-[var(--govrix-text-primary)] tracking-tight">
+            Risk Overview
+          </h1>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Live anomaly signal from the OSS detector chain
+          </p>
+        </div>
+        <div className="card">
+          <EnterpriseFeatureCard
+            icon={ShieldAlert}
+            title="Risk Monitoring requires Govrix Enterprise"
+            description="The risk overview dashboard provides real-time risk scoring, alert management, and trend analysis across all your AI agents. Upgrade to Govrix Enterprise to enable this feature."
+          />
+        </div>
+        {!healthError && <PostureSection health={health} isLoading={healthLoading} />}
+      </div>
+    )
+  }
+
+  const rows: AnomalyAlertLite[] = alerts ?? []
+  const counts = {
+    critical: rows.filter(r => r.severity === 'critical').length,
+    high:     rows.filter(r => r.severity === 'warn').length,
+    medium:   0,
+    low:      rows.filter(r => r.severity === 'info').length,
+  }
+  const total = counts.critical + counts.high + counts.medium + counts.low
+
+  // Composite OSS risk score: weighted by severity, capped at 100.
+  const composite = Math.min(
+    100,
+    Math.round(counts.critical * 12 + counts.high * 5 + counts.low * 1),
+  )
+
+  const recent: Alert[] = rows.slice(0, 8).map(r => ({
+    id: r.id,
+    severity: (r.severity === 'critical'
+      ? 'critical'
+      : r.severity === 'warn'
+        ? 'high'
+        : 'low') as Severity,
+    message: `${r.detector} (score=${r.score.toFixed(2)})`,
+    agent: r.agent_id,
+    timestamp: r.timestamp,
+  }))
+
+  return (
+    <div className="space-y-6 page-enter">
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-lg font-display font-bold text-[var(--govrix-text-primary)] tracking-tight">
+            Risk Overview
+          </h1>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Live signal from the OSS anomaly detector chain &mdash; last 24 hours
+          </p>
+        </div>
+        <div className="flex items-center gap-2 text-xs text-slate-500 font-mono">
+          <span className="w-1.5 h-1.5 rounded-full bg-brand-500 pulse-glow" />
+          Live
+        </div>
+      </div>
+
+      {alertsLoading ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="skeleton h-40 rounded-xl" />
+          ))}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 stagger-in">
+          <RiskScoreCard score={composite} />
+          <AlertCountCard
+            total={total}
+            critical={counts.critical}
+            high={counts.high}
+            medium={counts.medium}
+            low={counts.low}
+          />
+          <PolicyViolationsCard count={counts.critical + counts.high} />
+          <PiiDetectionsCard count={0} />
+        </div>
+      )}
+
+      {recent.length > 0 && <AlertList alerts={recent} />}
+
+      <PostureSection health={health} isLoading={healthLoading} />
+
+      {/* Advanced enterprise correlations stay gated */}
+      <div className="card">
+        <EnterpriseFeatureCard
+          icon={ShieldAlert}
+          title="Cross-agent correlation requires Govrix Enterprise"
+          description="Correlate anomaly clusters across agents and sessions to surface coordinated attacks, runaway sub-agents, and policy drift."
+        />
+      </div>
+    </div>
+  )
+}
+
 // ── Page ───────────────────────────────────────────────────────────────────────
 
 export function RiskOverviewPage() {
@@ -504,28 +654,15 @@ export function RiskOverviewPage() {
     retry: 1,
   })
 
-  // If the risk overview API returned a 404, this is an enterprise-only feature
+  // If the risk overview API returned a 404, fall back to anomaly alerts
+  // for live counts (OSS path). Advanced cross-agent correlation stays gated.
   if (!riskLoading && riskError && isNotFoundError(riskError)) {
     return (
-      <div className="space-y-6 page-enter">
-        <div>
-          <h1 className="text-lg font-display font-bold text-[var(--govrix-text-primary)] tracking-tight">
-            Risk Overview
-          </h1>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Enterprise security command center
-          </p>
-        </div>
-        <div className="card">
-          <EnterpriseFeatureCard
-            icon={ShieldAlert}
-            title="Risk Monitoring requires Govrix Enterprise"
-            description="The risk overview dashboard provides real-time risk scoring, alert management, and trend analysis across all your AI agents. Upgrade to Govrix Enterprise to enable this feature."
-          />
-        </div>
-        {/* Still show security posture if health endpoint works */}
-        {!healthError && <PostureSection health={health} isLoading={healthLoading} />}
-      </div>
+      <RiskOverviewFromAlerts
+        health={health}
+        healthLoading={healthLoading}
+        healthError={healthError}
+      />
     )
   }
 

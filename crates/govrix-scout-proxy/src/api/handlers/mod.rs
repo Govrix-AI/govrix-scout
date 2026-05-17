@@ -12,6 +12,7 @@
 //! - `traces`   — distributed trace queries
 
 pub mod agents;
+pub mod alerts;
 pub mod budgets;
 pub mod config;
 pub mod costs;

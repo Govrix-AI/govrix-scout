@@ -313,6 +313,7 @@ async fn main() -> anyhow::Result<()> {
                     api_config,
                     api_metrics,
                     Some(platform_routes),
+                    None,
                 )
                 .await
             }

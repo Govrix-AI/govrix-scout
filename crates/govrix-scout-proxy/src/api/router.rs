@@ -161,6 +161,16 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/api/v1/agents/{id}/project",
             axum::routing::put(handlers::projects::assign_agent_project),
         )
+        // ── Alerts (anomaly v2) ────────────────────────────────────────────
+        // /alerts/stream must come BEFORE /alerts/{id} so axum matches the
+        // literal "stream" segment first.
+        .route("/api/v1/alerts", get(handlers::alerts::list_alerts))
+        .route("/api/v1/alerts/stream", get(handlers::alerts::stream))
+        .route("/api/v1/alerts/{id}", get(handlers::alerts::get_alert))
+        .route(
+            "/api/v1/alerts/{id}/acknowledge",
+            post(handlers::alerts::acknowledge_alert),
+        )
         // ── Traces ─────────────────────────────────────────────────────────
         .route("/api/v1/traces", get(handlers::traces::list_traces))
         .route(

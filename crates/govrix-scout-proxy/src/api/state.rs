@@ -8,7 +8,9 @@ use std::time::Instant;
 
 use govrix_scout_common::config::Config;
 use govrix_scout_store::StorePool;
+use tokio::sync::broadcast;
 
+use crate::anomaly::AnomalyAlert;
 use crate::events::Metrics;
 
 /// Shared state for all API handlers.
@@ -29,6 +31,11 @@ pub struct AppState {
     /// The same `Arc<Metrics>` is held by `InterceptorState` in the proxy,
     /// so reads here reflect live counter values written by the hot path.
     pub metrics: Arc<Metrics>,
+
+    /// Optional broadcast sender for live anomaly alerts.
+    ///
+    /// SSE handlers `subscribe()` for a new `Receiver` per connection.
+    pub alert_tx: Option<broadcast::Sender<AnomalyAlert>>,
 }
 
 impl AppState {
@@ -39,6 +46,23 @@ impl AppState {
             config,
             started_at: Instant::now(),
             metrics,
+            alert_tx: None,
+        })
+    }
+
+    /// Same as `new`, but with the anomaly alert broadcast sender attached.
+    pub fn new_with_alerts(
+        pool: StorePool,
+        config: Config,
+        metrics: Arc<Metrics>,
+        alert_tx: broadcast::Sender<AnomalyAlert>,
+    ) -> Arc<Self> {
+        Arc::new(Self {
+            pool,
+            config,
+            started_at: Instant::now(),
+            metrics,
+            alert_tx: Some(alert_tx),
         })
     }
 }

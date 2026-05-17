@@ -19,6 +19,7 @@ import { EuAiActPage } from '@/pages/EuAiActPage'
 import { TraceListPage } from '@/pages/TraceListPage'
 import { TracePage } from '@/pages/TracePage'
 import { StreamPage } from '@/pages/StreamPage'
+import { AnomaliesPage } from '@/pages/AnomaliesPage'
 
 // ── Query client ─────────────────────────────────────────────────────────────
 
@@ -57,6 +58,7 @@ export default function App() {
 
             {/* Governance */}
             <Route path="/risk"        element={<RiskOverviewPage />} />
+            <Route path="/anomalies"   element={<AnomaliesPage />} />
             <Route path="/policies"    element={<PoliciesPage />} />
             <Route path="/compliance"  element={<CompliancePage />} />
             <Route path="/sessions"    element={<SessionsPage />} />

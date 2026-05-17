@@ -1,0 +1,1169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Govrix Scout — AI Agent Governance</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/5.1.0/reveal.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/5.1.0/theme/white.min.css" id="theme">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #ffffff;
+  --text: #1e293b;
+  --heading: #0f172a;
+  --accent: #10b981;
+  --accent2: #6366f1;
+  --muted: #64748b;
+  --card-bg: #f8fafc;
+  --card-border: #e2e8f0;
+  --code-bg: #f1f5f9;
+  --danger: #ef4444;
+  --warning: #f59e0b;
+}
+
+.reveal {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 32px;
+  color: var(--text);
+}
+
+.reveal h1, .reveal h2, .reveal h3, .reveal h4 {
+  font-family: 'Inter', sans-serif;
+  color: var(--heading);
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: -0.02em;
+}
+
+.reveal h1 { font-size: 2.2em; font-weight: 800; }
+.reveal h2 { font-size: 1.5em; margin-bottom: 0.6em; }
+.reveal h3 { font-size: 1.1em; color: var(--muted); font-weight: 600; }
+
+.reveal code, .reveal pre {
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.reveal pre {
+  background: var(--code-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  padding: 16px 20px;
+  font-size: 0.55em;
+  width: 90%;
+  margin: 0 auto;
+  box-shadow: none;
+}
+
+.reveal code {
+  background: var(--code-bg);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.85em;
+  color: var(--accent2);
+}
+
+.reveal pre code {
+  background: transparent;
+  padding: 0;
+  color: var(--text);
+}
+
+.reveal section { text-align: left; }
+.reveal .center { text-align: center; }
+
+/* Title slide */
+.title-slide { text-align: center !important; }
+.title-slide h1 {
+  font-size: 2.4em;
+  line-height: 1.15;
+  margin-bottom: 0.2em;
+}
+.title-slide .subtitle {
+  font-size: 0.65em;
+  color: var(--muted);
+  font-weight: 500;
+  margin-top: 0.3em;
+}
+.title-slide .author {
+  font-size: 0.55em;
+  color: var(--accent2);
+  font-weight: 600;
+  margin-top: 1.5em;
+}
+.title-slide .logo {
+  width: 80px;
+  height: 80px;
+  border-radius: 16px;
+  margin: 0 auto 1.2em;
+  display: block;
+}
+
+/* Stat cards */
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+  margin-top: 1em;
+}
+.stat-card {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  padding: 24px 20px;
+  text-align: center;
+}
+.stat-card .number {
+  font-size: 2em;
+  font-weight: 800;
+  color: var(--accent);
+  line-height: 1.1;
+}
+.stat-card .label {
+  font-size: 0.5em;
+  color: var(--muted);
+  margin-top: 6px;
+  line-height: 1.3;
+}
+.stat-card .source {
+  font-size: 0.35em;
+  color: #94a3b8;
+  margin-top: 4px;
+}
+
+/* Split layout */
+.split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 40px;
+  align-items: start;
+}
+.split-wide {
+  display: grid;
+  grid-template-columns: 2fr 3fr;
+  gap: 40px;
+  align-items: start;
+}
+
+/* Incident cards */
+.incident {
+  background: #fef2f2;
+  border-left: 4px solid var(--danger);
+  padding: 12px 16px;
+  margin: 8px 0;
+  border-radius: 0 8px 8px 0;
+  font-size: 0.55em;
+  line-height: 1.4;
+}
+.incident strong {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+/* Pain point cards */
+.pain-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-top: 0.6em;
+}
+.pain-card {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 10px;
+  padding: 16px;
+  font-size: 0.52em;
+  line-height: 1.4;
+}
+.pain-card .icon {
+  font-size: 1.4em;
+  margin-bottom: 4px;
+}
+.pain-card strong {
+  color: var(--heading);
+  display: block;
+  margin-bottom: 2px;
+  font-size: 1.05em;
+}
+
+.penalty-banner {
+  background: #fef2f2;
+  border: 2px solid var(--danger);
+  border-radius: 10px;
+  padding: 14px 20px;
+  text-align: center;
+  margin-top: 16px;
+  font-size: 0.6em;
+  font-weight: 600;
+  color: var(--danger);
+}
+
+/* Comparison table */
+.compare-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.48em;
+  margin-top: 0.5em;
+}
+.compare-table th {
+  background: var(--heading);
+  color: white;
+  padding: 10px 12px;
+  text-align: left;
+  font-weight: 600;
+}
+.compare-table th:first-child { border-radius: 8px 0 0 0; }
+.compare-table th:last-child { border-radius: 0 8px 0 0; }
+.compare-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--card-border);
+}
+.compare-table tr:nth-child(even) td { background: var(--card-bg); }
+.compare-table .yes { color: var(--accent); font-weight: 600; }
+.compare-table .no { color: #cbd5e1; }
+.compare-table .missing { color: var(--danger); font-weight: 600; font-size: 0.9em; }
+
+/* Architecture diagram */
+.arch-diagram {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  padding: 28px 24px;
+  margin: 0.6em auto;
+  max-width: 880px;
+}
+.arch-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin: 10px 0;
+}
+.arch-box {
+  background: white;
+  border: 2px solid var(--card-border);
+  border-radius: 10px;
+  padding: 10px 18px;
+  font-size: 0.5em;
+  font-weight: 600;
+  text-align: center;
+  min-width: 120px;
+}
+.arch-box.primary {
+  border-color: var(--accent);
+  background: #ecfdf5;
+  color: #065f46;
+}
+.arch-box.secondary {
+  border-color: var(--accent2);
+  background: #eef2ff;
+  color: #3730a3;
+}
+.arch-arrow {
+  font-size: 0.6em;
+  color: var(--muted);
+  font-weight: 600;
+}
+.arch-arrow-down {
+  text-align: center;
+  font-size: 0.6em;
+  color: var(--muted);
+  margin: 4px 0;
+}
+.arch-env {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.42em;
+  color: var(--muted);
+  text-align: center;
+  margin-top: 12px;
+  background: var(--code-bg);
+  padding: 8px 16px;
+  border-radius: 6px;
+  display: inline-block;
+}
+
+/* Feature grid */
+.feature-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 0.4em;
+}
+.feature-card {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 10px;
+  padding: 14px 16px;
+  font-size: 0.46em;
+  line-height: 1.4;
+  transition: border-color 0.2s;
+}
+.feature-card:hover { border-color: var(--accent); }
+.feature-card .feat-title {
+  font-weight: 700;
+  color: var(--heading);
+  font-size: 1.1em;
+  margin-bottom: 3px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.feature-card .feat-title .feat-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  font-size: 0.8em;
+  flex-shrink: 0;
+}
+.feat-icon.green { background: #ecfdf5; color: #059669; }
+.feat-icon.indigo { background: #eef2ff; color: #4f46e5; }
+.feat-icon.red { background: #fef2f2; color: #dc2626; }
+.feat-icon.amber { background: #fffbeb; color: #d97706; }
+.feat-icon.blue { background: #eff6ff; color: #2563eb; }
+.feat-icon.purple { background: #faf5ff; color: #7c3aed; }
+.feat-icon.rose { background: #fff1f2; color: #e11d48; }
+.feat-icon.teal { background: #f0fdfa; color: #0d9488; }
+
+/* Dashboard showcase */
+.dash-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  margin-top: 0.4em;
+}
+.dash-card {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 10px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.dash-card:hover {
+  border-color: var(--accent);
+  box-shadow: 0 2px 12px rgba(16, 185, 129, 0.12);
+}
+.dash-card .dash-img-wrap {
+  position: relative;
+  background: #e2e8f0;
+  aspect-ratio: 16/10;
+  overflow: hidden;
+}
+.dash-card .dash-img-wrap img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.dash-card .dash-img-wrap iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+  display: block;
+}
+.dash-card .dash-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  font-size: 0.4em;
+  color: var(--muted);
+  flex-direction: column;
+  gap: 4px;
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+.dash-card .dash-placeholder .route {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.85em;
+  color: #94a3b8;
+}
+.dash-card .dash-info {
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.dash-card .dash-info .dash-name {
+  font-size: 0.4em;
+  font-weight: 600;
+  color: var(--heading);
+}
+.dash-card .dash-info .dash-live-btn {
+  font-size: 0.32em;
+  padding: 3px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--accent);
+  background: white;
+  color: var(--accent);
+  cursor: pointer;
+  font-weight: 600;
+  font-family: 'Inter', sans-serif;
+  transition: all 0.15s;
+}
+.dash-card .dash-info .dash-live-btn:hover {
+  background: var(--accent);
+  color: white;
+}
+.dash-card .dash-info .dash-live-btn.active {
+  background: var(--accent);
+  color: white;
+}
+
+.section-label {
+  font-size: 0.45em;
+  font-weight: 600;
+  color: var(--accent2);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 8px;
+}
+
+/* Readiness grid */
+.ready-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-top: 0.5em;
+}
+.ready-card {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 10px;
+  padding: 16px;
+  font-size: 0.5em;
+}
+.ready-card strong {
+  color: var(--heading);
+  display: block;
+  margin-bottom: 4px;
+  font-size: 1.05em;
+}
+.ready-card .metric {
+  color: var(--accent);
+  font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* Closing */
+.closing { text-align: center !important; }
+.closing h2 { font-size: 1.8em; margin-bottom: 0.3em; }
+.closing .tagline {
+  font-size: 0.7em;
+  color: var(--muted);
+  margin-bottom: 1.5em;
+}
+.closing .links {
+  font-size: 0.5em;
+  color: var(--accent2);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* Punchline */
+.punchline {
+  background: var(--card-bg);
+  border-left: 4px solid var(--accent);
+  padding: 14px 20px;
+  margin-top: 16px;
+  border-radius: 0 8px 8px 0;
+  font-size: 0.6em;
+  font-weight: 600;
+  font-style: italic;
+  color: var(--heading);
+}
+
+/* Tagline banner */
+.tagline-banner {
+  text-align: center;
+  margin-top: 20px;
+  padding: 14px 24px;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  border-radius: 10px;
+  font-size: 0.6em;
+  font-weight: 700;
+  color: #065f46;
+}
+
+/* Slide number */
+.reveal .slide-number {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+/* Progress bar */
+.reveal .progress span { background: var(--accent); }
+
+/* Override reveal defaults */
+.reveal p { margin: 0.4em 0; line-height: 1.5; }
+.reveal ul, .reveal ol {
+  margin: 0.3em 0;
+  font-size: 0.9em;
+}
+.reveal li { margin: 0.15em 0; }
+
+/* Fragment transitions */
+.reveal .fragment.fade-up {
+  transform: translateY(20px);
+  opacity: 0;
+  transition: all 0.4s ease;
+}
+.reveal .fragment.fade-up.visible {
+  transform: translateY(0);
+  opacity: 1;
+}
+
+/* Responsive tweaks for projector */
+@media (min-width: 1920px) {
+  .reveal { font-size: 36px; }
+}
+</style>
+</head>
+<body>
+<div class="reveal">
+<div class="slides">
+
+<!-- ============================================ -->
+<!-- SLIDE 1: TITLE                               -->
+<!-- ============================================ -->
+<section class="title-slide">
+  <img src="../docs/assets/logo.png" alt="Govrix" class="logo" onerror="this.style.display='none'">
+  <h1>Govrix Scout</h1>
+  <div class="subtitle">Open-Source AI Agent Governance</div>
+  <div class="author">Manas Choudhary &nbsp;|&nbsp; DSAI, 2nd Year</div>
+  <aside class="notes">
+    Introduce yourself. Govrix Scout is an open-source project you built to solve a real problem in the AI agent ecosystem.
+    It's a transparent HTTP proxy that sits between AI agents and their APIs to provide governance, compliance, and cost control.
+  </aside>
+</section>
+
+<!-- ============================================ -->
+<!-- SLIDE 2: THE WORLD IS CHANGING               -->
+<!-- ============================================ -->
+<section>
+  <h2>The World is Changing</h2>
+  <h3>Every company is becoming an AI agent company</h3>
+  <div class="stat-grid">
+    <div class="stat-card fragment fade-up">
+      <div class="number">72%</div>
+      <div class="label">of organizations have<br>adopted AI in production</div>
+      <div class="source">McKinsey Global Survey, 2024</div>
+    </div>
+    <div class="stat-card fragment fade-up">
+      <div class="number">33%</div>
+      <div class="label">of enterprise apps will<br>have agents by 2028</div>
+      <div class="source">Gartner, 2024</div>
+    </div>
+    <div class="stat-card fragment fade-up">
+      <div class="number" style="font-size:1.6em;">$5B&rarr;$50B+</div>
+      <div class="label">AI agent market growth<br>by 2030 (40% CAGR)</div>
+      <div class="source">Industry Estimates</div>
+    </div>
+  </div>
+  <div class="punchline fragment fade-up">
+    AI agents are no longer experiments. They're making real decisions, spending real money, and accessing real data.
+  </div>
+  <aside class="notes">
+    The shift is happening fast. AI agents aren't just chatbots anymore — they call APIs, use tools, access databases, make purchases, send emails.
+    Every major tech company is building agent frameworks. But while everyone's racing to deploy agents, almost nobody is asking: who's watching them?
+  </aside>
+</section>
+
+<!-- ============================================ -->
+<!-- SLIDE 3: THE PROBLEM                         -->
+<!-- ============================================ -->
+<section>
+  <h2>The Problem</h2>
+  <h3>Nobody's watching the agents</h3>
+  <div class="split-wide">
+    <div>
+      <p style="font-size:0.55em; color: var(--muted); margin-bottom:12px;">What AI agents do today:</p>
+      <div style="font-size:0.52em; line-height:1.6;">
+        <div style="padding:4px 0;">Call external APIs autonomously</div>
+        <div style="padding:4px 0;">Use tools and execute code</div>
+        <div style="padding:4px 0;">Access sensitive business data</div>
+        <div style="padding:4px 0;">Make financial decisions</div>
+        <div style="padding:4px 0;">Interact with customers</div>
+      </div>
+    </div>
+    <div>
+      <div class="incident fragment fade-up">
+        <strong>Samsung, 2023</strong> &mdash; Engineers leaked proprietary source code by pasting it into ChatGPT. Company banned all generative AI tools.
+      </div>
+      <div class="incident fragment fade-up">
+        <strong>Air Canada, 2024</strong> &mdash; Chatbot invented a bereavement fare refund policy. Tribunal ruled the airline must honor it.
+      </div>
+      <div class="incident fragment fade-up">
+        <strong>Chevrolet, 2023</strong> &mdash; Dealer chatbot agreed to sell a Tahoe for $1. User tricked it into a "binding agreement."
+      </div>
+      <div class="incident fragment fade-up">
+        <strong>Recursive Loops</strong> &mdash; Developers waking up to $1,000+ API bills from autonomous agents running overnight.
+      </div>
+    </div>
+  </div>
+  <div class="punchline fragment fade-up">
+    Your AI agent has root access to your business &mdash; and zero accountability.
+  </div>
+  <aside class="notes">
+    These are real incidents. Samsung's data leak happened because there was no proxy between engineers' tools and the API — data went straight out.
+    Air Canada was legally liable for what their chatbot said because they couldn't prove oversight.
+    The recursive loop problem is incredibly common — agents call themselves, or retry endlessly, burning through thousands of dollars in tokens.
+    The common thread: no visibility, no control, no audit trail.
+  </aside>
+</section>
+
+<!-- ============================================ -->
+<!-- SLIDE 4: THE GOVERNANCE CRISIS               -->
+<!-- ============================================ -->
+<section>
+  <h2>The Governance Crisis</h2>
+  <h3>It's not just a technical problem</h3>
+  <div class="pain-grid">
+    <div class="pain-card fragment fade-up">
+      <div class="icon">&#x1f50d;</div>
+      <strong>Data Leaks</strong>
+      No visibility into what data agents send to external APIs. PII, source code, trade secrets — all leaving without a trace.
+    </div>
+    <div class="pain-card fragment fade-up">
+      <div class="icon">&#x1f4b8;</div>
+      <strong>Cost Blowouts</strong>
+      No budgets, no alerts. Agents burn through tokens overnight. No per-agent limits or progressive throttling.
+    </div>
+    <div class="pain-card fragment fade-up">
+      <div class="icon">&#x26a0;</div>
+      <strong>Rogue Behavior</strong>
+      No kill switch. When an agent goes wrong, you can't stop it in real-time. No circuit breakers for loops or risk spikes.
+    </div>
+    <div class="pain-card fragment fade-up">
+      <div class="icon">&#x1f4dc;</div>
+      <strong>No Audit Trail</strong>
+      Can't prove what happened. No tamper-evident logs. If a regulator or client asks, you have nothing to show.
+    </div>
+    <div class="pain-card fragment fade-up">
+      <div class="icon">&#x2696;</div>
+      <strong>Compliance Gap</strong>
+      EU AI Act requires record-keeping (Art.12), human oversight (Art.14), data governance (Art.10). These controls don't exist today.
+    </div>
+    <div class="pain-card fragment fade-up">
+      <div class="icon">&#x1f3e5;</div>
+      <strong>Multi-Framework</strong>
+      It's not just EU &mdash; SOC 2 Type II, HIPAA, NIST 800-53 all require audit trails and access controls for AI systems.
+    </div>
+  </div>
+  <div class="penalty-banner fragment fade-up">
+    EU AI Act penalties: up to &euro;35M or 7% of global annual turnover
+  </div>
+  <aside class="notes">
+    This is a multi-dimensional crisis. It's legal (EU AI Act with massive penalties), financial (cost overruns), reputational (chatbot disasters), and operational (no way to stop a rogue agent).
+    And it's not just the EU — SOC 2, HIPAA, NIST all have requirements that apply to AI systems. Companies deploying agents without governance are exposed on every front.
+  </aside>
+</section>
+
+<!-- ============================================ -->
+<!-- SLIDE 5: THE GAP                             -->
+<!-- ============================================ -->
+<section>
+  <h2>The Gap</h2>
+  <h3>Observability &ne; Governance</h3>
+  <table class="compare-table">
+    <thead>
+      <tr>
+        <th>Capability</th>
+        <th>LangSmith</th>
+        <th>Helicone</th>
+        <th>Arize</th>
+        <th>Portkey</th>
+        <th class="missing">What's Missing</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Tamper-evident logs</td>
+        <td class="no">&times;</td>
+        <td class="no">&times;</td>
+        <td class="no">&times;</td>
+        <td class="no">&times;</td>
+        <td class="missing">Required by Art.12</td>
+      </tr>
+      <tr>
+        <td>PII detection &amp; masking</td>
+        <td class="no">&times;</td>
+        <td class="no">&times;</td>
+        <td class="no">&times;</td>
+        <td class="no">&times;</td>
+        <td class="missing">Required by Art.10</td>
+      </tr>
+      <tr>
+        <td>Kill switch / circuit breakers</td>
+        <td class="no">&times;</td>
+        <td class="no">&times;</td>
+        <td class="no">&times;</td>
+        <td class="no">&times;</td>
+        <td class="missing">Required by Art.14</td>
+      </tr>
+      <tr>
+        <td>Compliance frameworks</td>
+        <td class="no">&times;</td>
+        <td class="no">&times;</td>
+        <td class="no">&times;</td>
+        <td class="no">&times;</td>
+        <td class="missing">SOC 2, HIPAA, NIST</td>
+      </tr>
+      <tr>
+        <td>Zero code changes</td>
+        <td class="no">&times;</td>
+        <td class="yes">&checkmark;</td>
+        <td class="no">&times;</td>
+        <td class="yes">&checkmark;</td>
+        <td></td>
+      </tr>
+      <tr>
+        <td>Multi-protocol (MCP, A2A)</td>
+        <td class="no">&times;</td>
+        <td class="no">&times;</td>
+        <td class="no">&times;</td>
+        <td class="no">&times;</td>
+        <td class="missing">Agent ecosystem</td>
+      </tr>
+      <tr>
+        <td>Budget enforcement</td>
+        <td class="no">&times;</td>
+        <td class="yes">&checkmark;</td>
+        <td class="no">&times;</td>
+        <td class="yes">&checkmark;</td>
+        <td></td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="punchline fragment fade-up">
+    They answer "what is my AI doing?" &mdash; not "can I prove it to a regulator?"
+  </div>
+  <aside class="notes">
+    This is the key insight. LangSmith is great for debugging LLM chains during development. Helicone is a nice proxy for logging.
+    But none of them provide what enterprises actually need: tamper-evident audit trails, PII masking, emergency kill switches, or compliance framework support.
+    The distinction is: observability is for developers, governance is for the enterprise — legal, compliance, risk, the board.
+  </aside>
+</section>
+
+<!-- ============================================ -->
+<!-- SLIDE 6: INTRODUCING GOVRIX SCOUT            -->
+<!-- ============================================ -->
+<section>
+  <h2>Introducing Govrix Scout</h2>
+  <div class="arch-diagram">
+    <div class="arch-row">
+      <div class="arch-box">AI Agent</div>
+      <div class="arch-arrow">&mdash; env var &rarr;</div>
+      <div class="arch-box primary">Govrix Proxy</div>
+      <div class="arch-arrow">&rarr;</div>
+      <div class="arch-box">OpenAI</div>
+    </div>
+    <div class="arch-row" style="margin-left:160px;">
+      <div style="width:120px;"></div>
+      <div></div>
+      <div class="arch-arrow-down">&darr;</div>
+      <div></div>
+      <div class="arch-box">Anthropic</div>
+    </div>
+    <div class="arch-row">
+      <div style="width:120px;"></div>
+      <div></div>
+      <div class="arch-box secondary">Policy Engine + PII Scanner</div>
+      <div class="arch-arrow">&rarr;</div>
+      <div class="arch-box">MCP / A2A</div>
+    </div>
+    <div class="arch-arrow-down">&darr;</div>
+    <div class="arch-row">
+      <div class="arch-box secondary">TimescaleDB<br><span style="font-size:0.75em; color:var(--muted);">Tamper-evident Merkle chain</span></div>
+      <div class="arch-arrow">&rarr;</div>
+      <div class="arch-box primary">Dashboard<br><span style="font-size:0.75em; color:var(--muted);">15 governance pages</span></div>
+    </div>
+  </div>
+  <div style="text-align:center;">
+    <div class="arch-env">export OPENAI_BASE_URL=http://localhost:4000/proxy/openai/v1</div>
+  </div>
+  <div class="tagline-banner fragment fade-up">
+    One environment variable. Zero code changes. Full governance.
+  </div>
+  <aside class="notes">
+    This is the core architecture. Govrix Scout is a transparent HTTP proxy. Your agents don't need any code changes — you just point their base URL at the proxy.
+    The proxy captures every request and response, runs them through the policy engine and PII scanner, stores them in TimescaleDB with a tamper-evident Merkle hash chain, and makes everything visible through a 15-page governance dashboard.
+    It supports OpenAI, Anthropic, MCP (Model Context Protocol), and Agent-to-Agent protocols.
+  </aside>
+</section>
+
+<!-- ============================================ -->
+<!-- SLIDE 7: HOW WE SOLVE IT                     -->
+<!-- ============================================ -->
+<section>
+  <h2>How We Solve It</h2>
+  <div class="feature-grid">
+    <div class="feature-card fragment fade-up">
+      <div class="feat-title"><span class="feat-icon green">&#x1f512;</span> Tamper-Evident Audit Trail</div>
+      SHA-256 Merkle chain links every event cryptographically. Modifying any event invalidates the entire chain. Regulators can verify integrity independently.
+    </div>
+    <div class="feature-card fragment fade-up">
+      <div class="feat-title"><span class="feat-icon red">&#x1f6e1;</span> PII Detection &amp; Masking</div>
+      Real-time scanning for emails, SSNs, credit cards, phone numbers, API keys. PII values are never stored &mdash; only type and location are logged.
+    </div>
+    <div class="feature-card fragment fade-up">
+      <div class="feat-title"><span class="feat-icon amber">&#x26a1;</span> Kill Switch + Circuit Breakers</div>
+      Manual kill, emergency kill-all, plus automatic circuit breakers for loop detection, cost spikes, and risk score breaches. Stops rogue agents in real-time.
+    </div>
+    <div class="feature-card fragment fade-up">
+      <div class="feat-title"><span class="feat-icon blue">&#x1f4b0;</span> Budget Enforcement</div>
+      Per-agent token and cost limits. Progressive enforcement: warn at 80%, throttle at 90%, hard block at 100%. Resets daily with countdown timers.
+    </div>
+    <div class="feature-card fragment fade-up">
+      <div class="feat-title"><span class="feat-icon purple">&#x1f4ca;</span> Risk Scoring &amp; Anomaly Detection</div>
+      Real-time risk gauge (0-100) per agent. Detects off-hours usage, token volume spikes, new tools, unusual provider switching, cost escalation.
+    </div>
+    <div class="feature-card fragment fade-up">
+      <div class="feat-title"><span class="feat-icon teal">&#x1f3ac;</span> Session Recording</div>
+      Full conversation replay with SHA-256 integrity hash. Verify that recordings haven't been tampered with. Audit-ready transcripts.
+    </div>
+    <div class="feature-card fragment fade-up">
+      <div class="feat-title"><span class="feat-icon indigo">&#x2699;</span> Policy Engine</div>
+      YAML-configurable rules with hot-reload. Actions: block, redact, alert, allow. Evaluated synchronously with zero I/O on the hot path. Fail-open by default.
+    </div>
+    <div class="feature-card fragment fade-up">
+      <div class="feat-title"><span class="feat-icon rose">&#x2696;</span> Compliance Frameworks</div>
+      SOC 2 Type II, EU AI Act, HIPAA, NIST 800-53 &mdash; built-in control matrices with pass/fail/partial status tracking and export for auditors.
+    </div>
+  </div>
+  <aside class="notes">
+    Each of these features maps to a real governance requirement.
+    The Merkle chain is inspired by blockchain — each event's hash depends on the previous one, making the audit trail tamper-evident.
+    PII detection runs in real-time on every request/response. We never store actual PII — just the type (e.g., "email detected at messages[0].content").
+    The kill switch has both manual controls and automatic circuit breakers — if an agent starts looping or burning through budget, it gets stopped automatically.
+    The policy engine is evaluated synchronously but with zero database I/O — so it adds less than 1ms of latency to the hot path.
+  </aside>
+</section>
+
+<!-- ============================================ -->
+<!-- SLIDE 8: DASHBOARD TOUR                      -->
+<!-- ============================================ -->
+<section>
+  <section>
+    <h2>Live Dashboard</h2>
+    <div class="section-label">Observability</div>
+    <div class="dash-grid">
+      <div class="dash-card" data-route="/overview" data-name="Overview">
+        <div class="dash-img-wrap">
+          <img src="screenshots/01-overview.png" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" alt="Overview">
+          <div class="dash-placeholder" style="display:none;"><span>Overview</span><span class="route">/overview</span></div>
+        </div>
+        <div class="dash-info">
+          <span class="dash-name">Overview &mdash; Stats, charts, live feed</span>
+          <button class="dash-live-btn" onclick="toggleLive(this, '/overview')">Go Live</button>
+        </div>
+      </div>
+      <div class="dash-card" data-route="/agents" data-name="Agents">
+        <div class="dash-img-wrap">
+          <img src="screenshots/02-agents.png" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" alt="Agents">
+          <div class="dash-placeholder" style="display:none;"><span>Agents</span><span class="route">/agents</span></div>
+        </div>
+        <div class="dash-info">
+          <span class="dash-name">Agents &mdash; Registry, status, details</span>
+          <button class="dash-live-btn" onclick="toggleLive(this, '/agents')">Go Live</button>
+        </div>
+      </div>
+      <div class="dash-card" data-route="/events" data-name="Events">
+        <div class="dash-img-wrap">
+          <img src="screenshots/03-events.png" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" alt="Events">
+          <div class="dash-placeholder" style="display:none;"><span>Events</span><span class="route">/events</span></div>
+        </div>
+        <div class="dash-info">
+          <span class="dash-name">Events &mdash; Full log with payload viewer</span>
+          <button class="dash-live-btn" onclick="toggleLive(this, '/events')">Go Live</button>
+        </div>
+      </div>
+      <div class="dash-card" data-route="/traces" data-name="Traces">
+        <div class="dash-img-wrap">
+          <img src="screenshots/04-traces.png" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" alt="Traces">
+          <div class="dash-placeholder" style="display:none;"><span>Traces</span><span class="route">/traces</span></div>
+        </div>
+        <div class="dash-info">
+          <span class="dash-name">Traces &mdash; Span trees, risk scores</span>
+          <button class="dash-live-btn" onclick="toggleLive(this, '/traces')">Go Live</button>
+        </div>
+      </div>
+      <div class="dash-card" data-route="/costs" data-name="Costs">
+        <div class="dash-img-wrap">
+          <img src="screenshots/06-costs.png" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" alt="Costs">
+          <div class="dash-placeholder" style="display:none;"><span>Costs</span><span class="route">/costs</span></div>
+        </div>
+        <div class="dash-info">
+          <span class="dash-name">Costs &mdash; Breakdown by agent, model</span>
+          <button class="dash-live-btn" onclick="toggleLive(this, '/costs')">Go Live</button>
+        </div>
+      </div>
+      <div class="dash-card" data-route="/stream" data-name="Live Stream">
+        <div class="dash-img-wrap">
+          <img src="screenshots/05-stream.png" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" alt="Stream">
+          <div class="dash-placeholder" style="display:none;"><span>Live Stream</span><span class="route">/stream</span></div>
+        </div>
+        <div class="dash-info">
+          <span class="dash-name">Stream &mdash; Real-time SSE feed</span>
+          <button class="dash-live-btn" onclick="toggleLive(this, '/stream')">Go Live</button>
+        </div>
+      </div>
+    </div>
+    <aside class="notes">
+      Walk through the observability pages. Overview gives you the bird's-eye view — active agents, event counts, costs, latency.
+      Events page has full filtering — by agent, protocol, model, time range. Click any event to see the full payload.
+      Traces show the full span tree of an agent's execution — you can see every LLM call, tool invocation, and their risk scores.
+    </aside>
+  </section>
+
+  <section>
+    <h2>Live Dashboard</h2>
+    <div class="section-label">Governance</div>
+    <div class="dash-grid">
+      <div class="dash-card" data-route="/risk" data-name="Risk">
+        <div class="dash-img-wrap">
+          <img src="screenshots/08-risk.png" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" alt="Risk">
+          <div class="dash-placeholder" style="display:none;"><span>Risk Overview</span><span class="route">/risk</span></div>
+        </div>
+        <div class="dash-info">
+          <span class="dash-name">Risk &mdash; Score gauge, alerts</span>
+          <button class="dash-live-btn" onclick="toggleLive(this, '/risk')">Go Live</button>
+        </div>
+      </div>
+      <div class="dash-card" data-route="/pii" data-name="PII">
+        <div class="dash-img-wrap">
+          <img src="screenshots/14-pii.png" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" alt="PII">
+          <div class="dash-placeholder" style="display:none;"><span>PII Activity</span><span class="route">/pii</span></div>
+        </div>
+        <div class="dash-info">
+          <span class="dash-name">PII &mdash; Detection, masking stats</span>
+          <button class="dash-live-btn" onclick="toggleLive(this, '/pii')">Go Live</button>
+        </div>
+      </div>
+      <div class="dash-card" data-route="/kill-switch" data-name="Kill Switch">
+        <div class="dash-img-wrap">
+          <img src="screenshots/13-kill-switch.png" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" alt="Kill Switch">
+          <div class="dash-placeholder" style="display:none;"><span>Kill Switch</span><span class="route">/kill-switch</span></div>
+        </div>
+        <div class="dash-info">
+          <span class="dash-name">Kill Switch &mdash; Emergency controls</span>
+          <button class="dash-live-btn" onclick="toggleLive(this, '/kill-switch')">Go Live</button>
+        </div>
+      </div>
+      <div class="dash-card" data-route="/budget" data-name="Budget">
+        <div class="dash-img-wrap">
+          <img src="screenshots/12-budget.png" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" alt="Budget">
+          <div class="dash-placeholder" style="display:none;"><span>Budget</span><span class="route">/budget</span></div>
+        </div>
+        <div class="dash-info">
+          <span class="dash-name">Budget &mdash; Limits, progress, donut charts</span>
+          <button class="dash-live-btn" onclick="toggleLive(this, '/budget')">Go Live</button>
+        </div>
+      </div>
+      <div class="dash-card" data-route="/compliance" data-name="Compliance">
+        <div class="dash-img-wrap">
+          <img src="screenshots/10-compliance.png" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" alt="Compliance">
+          <div class="dash-placeholder" style="display:none;"><span>Compliance</span><span class="route">/compliance</span></div>
+        </div>
+        <div class="dash-info">
+          <span class="dash-name">Compliance &mdash; SOC2, HIPAA, NIST</span>
+          <button class="dash-live-btn" onclick="toggleLive(this, '/compliance')">Go Live</button>
+        </div>
+      </div>
+      <div class="dash-card" data-route="/policies" data-name="Policies">
+        <div class="dash-img-wrap">
+          <img src="screenshots/09-policies.png" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" alt="Policies">
+          <div class="dash-placeholder" style="display:none;"><span>Policies</span><span class="route">/policies</span></div>
+        </div>
+        <div class="dash-info">
+          <span class="dash-name">Policies &mdash; YAML rules, hot-reload</span>
+          <button class="dash-live-btn" onclick="toggleLive(this, '/policies')">Go Live</button>
+        </div>
+      </div>
+    </div>
+    <aside class="notes">
+      The governance pages are the differentiator. Risk overview gives a real-time risk score for your entire platform.
+      PII activity shows every detection — type, pattern, whether it was masked. We never store actual PII values.
+      Kill switch lets you terminate any agent instantly, or hit the emergency kill-all button.
+      Budget enforcement shows per-agent spending with progress bars that go from green to amber to red.
+    </aside>
+  </section>
+
+  <section>
+    <h2>Live Dashboard</h2>
+    <div class="section-label">Compliance &amp; Audit</div>
+    <div class="dash-grid" style="grid-template-columns: repeat(3, 1fr);">
+      <div class="dash-card" data-route="/eu-ai-act" data-name="EU AI Act">
+        <div class="dash-img-wrap">
+          <img src="screenshots/15-eu-ai-act.png" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" alt="EU AI Act">
+          <div class="dash-placeholder" style="display:none;"><span>EU AI Act</span><span class="route">/eu-ai-act</span></div>
+        </div>
+        <div class="dash-info">
+          <span class="dash-name">EU AI Act &mdash; Article mapping, timeline</span>
+          <button class="dash-live-btn" onclick="toggleLive(this, '/eu-ai-act')">Go Live</button>
+        </div>
+      </div>
+      <div class="dash-card" data-route="/sessions" data-name="Sessions">
+        <div class="dash-img-wrap">
+          <img src="screenshots/11-sessions.png" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" alt="Sessions">
+          <div class="dash-placeholder" style="display:none;"><span>Sessions</span><span class="route">/sessions</span></div>
+        </div>
+        <div class="dash-info">
+          <span class="dash-name">Sessions &mdash; Recordings + integrity hash</span>
+          <button class="dash-live-btn" onclick="toggleLive(this, '/sessions')">Go Live</button>
+        </div>
+      </div>
+      <div class="dash-card" data-route="/reports" data-name="Reports">
+        <div class="dash-img-wrap">
+          <img src="screenshots/07-reports.png" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" alt="Reports">
+          <div class="dash-placeholder" style="display:none;"><span>Reports</span><span class="route">/reports</span></div>
+        </div>
+        <div class="dash-info">
+          <span class="dash-name">Reports &mdash; Generate PDF, JSON, CSV</span>
+          <button class="dash-live-btn" onclick="toggleLive(this, '/reports')">Go Live</button>
+        </div>
+      </div>
+    </div>
+    <div class="punchline" style="margin-top:20px;">
+      15 purpose-built pages. Not a dashboard bolted onto an observability tool &mdash; governance-first from day one.
+    </div>
+    <aside class="notes">
+      EU AI Act page maps each article to a specific Govrix control. Article 12 record-keeping maps to our Merkle chain audit trail.
+      Article 14 human oversight maps to the kill switch. Article 10 data governance maps to PII detection.
+      Sessions page shows full conversation recordings with cryptographic integrity verification — you can prove the recording wasn't altered.
+      Reports can be exported as PDF, JSON, or CSV for auditors.
+    </aside>
+  </section>
+</section>
+
+<!-- ============================================ -->
+<!-- SLIDE 9: INDUSTRY READINESS                  -->
+<!-- ============================================ -->
+<section>
+  <h2>Industry Readiness</h2>
+  <div class="ready-grid">
+    <div class="ready-card fragment fade-up">
+      <strong>Performance</strong>
+      <span class="metric">&lt;1ms</span> p50 latency, <span class="metric">&lt;5ms</span> p99.<br>
+      Built on <code>hyper</code> directly &mdash; not a framework. The proxy never becomes the bottleneck.
+    </div>
+    <div class="ready-card fragment fade-up">
+      <strong>Scale</strong>
+      TimescaleDB hypertables for time-series data. Bounded <span class="metric">10K</span> event channel with fire-and-forget persistence. No backpressure on the hot path.
+    </div>
+    <div class="ready-card fragment fade-up">
+      <strong>Reliability</strong>
+      <span class="metric">Fail-open</span> by design. If the policy engine panics, if the database is down &mdash; the proxy still forwards traffic. Governance never blocks your agents.
+    </div>
+    <div class="ready-card fragment fade-up">
+      <strong>Protocol Coverage</strong>
+      <span class="metric">OpenAI</span>, <span class="metric">Anthropic</span>, <span class="metric">MCP</span>, <span class="metric">A2A</span>. Streaming support. Protocol auto-detection. One proxy covers the entire agent ecosystem.
+    </div>
+    <div class="ready-card fragment fade-up">
+      <strong>Compliance</strong>
+      <span class="metric">4 frameworks</span>: SOC 2 Type II, EU AI Act, HIPAA, NIST 800-53. Built-in control matrices, not third-party integrations.
+    </div>
+    <div class="ready-card fragment fade-up">
+      <strong>Open Source</strong>
+      Full transparency. Community-driven. Enterprise tier for mTLS, SSO, and advanced session recording. Sustainable model.
+    </div>
+  </div>
+  <aside class="notes">
+    This isn't a prototype. The proxy is built in Rust on hyper — the same HTTP library that powers Cloudflare Workers.
+    The fail-open design is critical for enterprise adoption. Nobody will deploy a governance proxy that could take down their AI agents.
+    We support every major AI protocol — OpenAI, Anthropic, MCP for tool use, and even Agent-to-Agent delegation tracking.
+    The compliance frameworks aren't checkboxes — they're real control matrices with evidence tracking and export capabilities.
+  </aside>
+</section>
+
+<!-- ============================================ -->
+<!-- SLIDE 10: CLOSING                            -->
+<!-- ============================================ -->
+<section class="closing">
+  <img src="../docs/assets/logo.png" alt="Govrix" class="logo" style="width:60px; height:60px; border-radius:12px;" onerror="this.style.display='none'">
+  <h2>Govrix Scout</h2>
+  <div class="tagline">Governance your agents deserve.</div>
+  <div style="margin: 1em 0;">
+    <div class="links">github.com/manaspros/govrix-scout</div>
+  </div>
+  <div style="margin-top: 2em; font-size: 0.6em; color: var(--muted);">
+    Manas Choudhary &nbsp;&bull;&nbsp; DSAI, 2nd Year
+  </div>
+  <div style="margin-top: 2.5em; font-size: 0.75em; color: var(--heading); font-weight: 600;">
+    Questions?
+  </div>
+  <aside class="notes">
+    Thank the professor. Open for questions. If asked about the tech stack: Rust proxy (5 crates), React dashboard (TypeScript), TimescaleDB, Docker.
+    If asked about what's next: enterprise features like mTLS certificate-based agent identity, SSO integration, and advanced session recording.
+    If asked how it compares: it's the only open-source tool that combines proxy-based zero-code-change deployment with tamper-evident compliance logging.
+  </aside>
+</section>
+
+</div><!-- /slides -->
+</div><!-- /reveal -->
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/5.1.0/reveal.min.js"></script>
+<script>
+Reveal.initialize({
+  hash: true,
+  slideNumber: 'c/t',
+  width: 1280,
+  height: 720,
+  margin: 0.06,
+  transition: 'slide',
+  transitionSpeed: 'default',
+  center: false,
+  plugins: []
+});
+
+function toggleLive(btn, route) {
+  const card = btn.closest('.dash-card');
+  const wrap = card.querySelector('.dash-img-wrap');
+  const img = wrap.querySelector('img');
+  const placeholder = wrap.querySelector('.dash-placeholder');
+  let iframe = wrap.querySelector('iframe');
+
+  if (iframe) {
+    // Switch back to screenshot
+    iframe.remove();
+    if (img) img.style.display = '';
+    if (placeholder && !img) placeholder.style.display = 'flex';
+    btn.textContent = 'Go Live';
+    btn.classList.remove('active');
+  } else {
+    // Switch to live iframe
+    if (img) img.style.display = 'none';
+    if (placeholder) placeholder.style.display = 'none';
+    iframe = document.createElement('iframe');
+    iframe.src = 'http://localhost:3000' + route;
+    iframe.style.width = '100%';
+    iframe.style.height = '100%';
+    iframe.style.border = 'none';
+    iframe.style.position = 'absolute';
+    iframe.style.top = '0';
+    iframe.style.left = '0';
+    wrap.style.position = 'relative';
+    wrap.appendChild(iframe);
+    btn.textContent = 'Screenshot';
+    btn.classList.add('active');
+  }
+}
+
+// Handle missing screenshots gracefully
+document.querySelectorAll('.dash-card img').forEach(function(img) {
+  img.addEventListener('error', function() {
+    this.style.display = 'none';
+    var placeholder = this.nextElementSibling;
+    if (placeholder) placeholder.style.display = 'flex';
+  });
+});
+</script>
+</body>
+</html>

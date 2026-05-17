@@ -88,6 +88,8 @@ rust_decimal = { version = "1", features = ["serde-float"] }
 dashmap = "6"
 moka = { version = "0.12", features = ["sync", "future"] }
 lru = "0.12"
+tokio-stream = { version = "0.1", features = ["sync"] }
+futures-util = "0.3"
 
 # ML / sketches (anomaly v2)
 tdigest = "0.2"

@@ -16,7 +16,9 @@ use std::sync::Arc;
 use dashmap::DashMap;
 use govrix_scout_common::models::event::AgentEvent;
 use moka::sync::Cache;
-use tokio::sync::mpsc;
+use tokio::sync::{broadcast, mpsc};
+
+use crate::anomaly::AnomalyAlert;
 
 /// Default capacity of the event channel when no config is provided.
 /// Config field `events.channel_capacity` overrides this at startup.
@@ -206,14 +208,32 @@ pub fn create_channel_with_capacity(capacity: usize) -> (EventSender, mpsc::Rece
     (sender, rx)
 }
 
+/// Default capacity of the per-process anomaly alert broadcast channel.
+pub const ALERT_BROADCAST_CAPACITY: usize = 64;
+
 /// Configuration knobs for the event background writers.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct WriterConfig {
     pub writer_tasks: usize,
     pub batch_size: usize,
     pub batch_interval_ms: u64,
     /// Anomaly detection configuration, cloned into each writer task.
     pub anomaly: govrix_scout_common::config::AnomalyConfig,
+    /// Optional broadcast sender used to fan out anomaly alerts to live
+    /// subscribers (SSE consumers). `None` disables the fan-out.
+    pub alert_tx: Option<broadcast::Sender<AnomalyAlert>>,
+}
+
+impl std::fmt::Debug for WriterConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("WriterConfig")
+            .field("writer_tasks", &self.writer_tasks)
+            .field("batch_size", &self.batch_size)
+            .field("batch_interval_ms", &self.batch_interval_ms)
+            .field("anomaly", &self.anomaly)
+            .field("alert_tx", &self.alert_tx.is_some())
+            .finish()
+    }
 }
 
 impl Default for WriterConfig {
@@ -223,6 +243,7 @@ impl Default for WriterConfig {
             batch_size: 500,
             batch_interval_ms: 50,
             anomaly: govrix_scout_common::config::AnomalyConfig::default(),
+            alert_tx: None,
         }
     }
 }
@@ -266,7 +287,7 @@ pub fn spawn_writer_pool(
         let cfg = cfg.clone();
         handles.push(tokio::spawn(async move {
             tracing::info!(writer = id, "event writer task started");
-            run_writer_task(rx, event_metrics, pool, metrics, seen_agents, cfg).await;
+            run_writer_task(rx, event_metrics, pool, metrics, seen_agents, cfg, id).await;
         }));
     }
     handles
@@ -289,6 +310,7 @@ pub async fn run_background_writer(
         metrics,
         seen_agents,
         WriterConfig::default(),
+        0,
     )
     .await;
 }
@@ -300,7 +322,9 @@ async fn run_writer_task(
     metrics: Arc<Metrics>,
     seen_agents: Arc<Cache<String, ()>>,
     cfg: WriterConfig,
+    _writer_id: usize,
 ) {
+    let alert_tx = cfg.alert_tx.clone();
     let mut batch: Vec<AgentEvent> = Vec::with_capacity(cfg.batch_size);
     let batch_interval = tokio::time::Duration::from_millis(cfg.batch_interval_ms);
     // Per-task anomaly orchestrator (state is approximate per task — acceptable).
@@ -368,7 +392,7 @@ async fn run_writer_task(
                                 "event channel closed, flushing {} remaining events",
                                 batch.len()
                             );
-                            flush_batch(&mut batch, &pool, &metrics, &seen_agents, &mut orchestrator).await;
+                            flush_batch(&mut batch, &pool, &metrics, &seen_agents, &mut orchestrator, &alert_tx).await;
                             return;
                         }
                     }
@@ -380,7 +404,15 @@ async fn run_writer_task(
         }
 
         if !batch.is_empty() {
-            flush_batch(&mut batch, &pool, &metrics, &seen_agents, &mut orchestrator).await;
+            flush_batch(
+                &mut batch,
+                &pool,
+                &metrics,
+                &seen_agents,
+                &mut orchestrator,
+                &alert_tx,
+            )
+            .await;
         }
     }
 }
@@ -394,6 +426,7 @@ async fn flush_batch(
     metrics: &Arc<Metrics>,
     seen_agents: &Arc<Cache<String, ()>>,
     orchestrator: &mut crate::anomaly::AnomalyOrchestrator,
+    alert_tx: &Option<broadcast::Sender<AnomalyAlert>>,
 ) {
     if batch.is_empty() {
         return;
@@ -428,9 +461,8 @@ async fn flush_batch(
 
     // ── Anomaly v2 post-flush ─────────────────────────────────────────────
     // Run all detectors *after* the DB insert. Zero hot-path cost.
-    // STAGE-3: persist these alerts to `anomaly_alerts` hypertable.
     if orchestrator.enabled {
-        let mut emitted = 0usize;
+        let mut collected: Vec<AnomalyAlert> = Vec::new();
         for ev in batch.iter() {
             for alert in orchestrator.process(ev) {
                 tracing::info!(
@@ -440,11 +472,47 @@ async fn flush_batch(
                     score = alert.score,
                     "anomaly alert"
                 );
-                emitted += 1;
+                collected.push(alert);
             }
         }
-        if emitted > 0 {
-            tracing::debug!(emitted, "anomaly alerts produced from batch");
+
+        if !collected.is_empty() {
+            tracing::debug!(
+                emitted = collected.len(),
+                "anomaly alerts produced from batch"
+            );
+
+            // Persist (fail-soft).
+            if let Some(p) = pool {
+                let new_alerts: Vec<govrix_scout_store::NewAlert> = collected
+                    .iter()
+                    .map(|a| govrix_scout_store::NewAlert {
+                        id: a.id,
+                        timestamp: a.timestamp,
+                        agent_id: a.agent_id.clone(),
+                        session_id: a.session_id,
+                        detector: a.detector.clone(),
+                        severity: a.severity.to_string(),
+                        score: a.score,
+                        details: a.details.clone(),
+                    })
+                    .collect();
+
+                if let Err(e) = govrix_scout_store::insert_alerts_batch(p, &new_alerts).await {
+                    tracing::warn!(
+                        error = %e,
+                        count = new_alerts.len(),
+                        "failed to persist anomaly alerts (fail-soft, continuing)"
+                    );
+                }
+            }
+
+            // Broadcast for SSE subscribers (fail-soft — no receivers is fine).
+            if let Some(tx) = alert_tx {
+                for a in &collected {
+                    let _ = tx.send(a.clone());
+                }
+            }
         }
     }
 
