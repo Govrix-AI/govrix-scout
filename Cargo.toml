@@ -84,6 +84,19 @@ axum-server = { version = "0.7", features = ["tls-rustls"] }
 # Decimal
 rust_decimal = { version = "1", features = ["serde-float"] }
 
+# Concurrent / cache / streaming (v2 scale)
+dashmap = "6"
+moka = { version = "0.12", features = ["sync", "future"] }
+lru = "0.12"
+
+# ML / sketches (anomaly v2)
+tdigest = "0.2"
+hyperloglog-rs = "0.1"
+aho-corasick = "1"
+
+# Optional: Tier 2 sink
+redis = { version = "0.27", default-features = false, features = ["tokio-comp", "streams"], optional = true }
+
 # Internal crates
 govrix-scout-common = { path = "crates/govrix-scout-common" }
 govrix-scout-store = { path = "crates/govrix-scout-store" }

@@ -63,7 +63,7 @@ make ci              # Full CI: fmt-check + lint + test + build
 
 ---
 
-## Workspace Structure (5 Rust Crates)
+## Workspace Structure (9 Rust Crates)
 
 ```
 govrix-scout/
@@ -72,11 +72,16 @@ govrix-scout/
 │   ├── govrix-scout-proxy/    # Hot-path proxy + REST API — binary: govrix-scout
 │   ├── govrix-scout-store/    # PostgreSQL + TimescaleDB layer (sqlx)
 │   ├── govrix-scout-cli/      # CLI — binary: govrix-scout-cli
-│   └── govrix-scout-reports/  # PDF + JSON report generation
+│   ├── govrix-scout-reports/  # PDF + JSON report generation
+│   ├── govrix-common/         # Shared identity/policy types
+│   ├── govrix-policy/         # Policy engine + PII detector
+│   ├── govrix-identity/       # Identity / auth primitives
+│   └── govrix-server/         # Auxiliary mgmt server
 ├── dashboard/                 # React 18 + TypeScript + Vite + Tailwind CSS
 ├── docker/                    # docker-compose.yml, Dockerfile, nginx.conf
-├── init/                # 5 SQL files (idempotent)
+├── init/                      # SQL migrations (idempotent)
 ├── config/                    # govrix.default.toml, policies.example.yaml
+├── docs/                      # Local-only architecture docs (gitignored)
 └── scripts/                   # setup.sh, verify.sh
 ```
 
@@ -120,6 +125,7 @@ govrix-scout/
 | Costs | `GET /api/v1/costs/summary`, `GET /api/v1/costs/breakdown` |
 | Reports | `GET /api/v1/reports/types`, `POST /api/v1/reports/generate`, `GET /api/v1/reports` |
 | Config | `GET /api/v1/config` |
+| Alerts | `GET /api/v1/alerts`, `GET /api/v1/alerts/{id}`, `GET /api/v1/alerts/stream`, `POST /api/v1/alerts/{id}/acknowledge` |
 
 Bearer token auth on `/api/v1/*`. Response format: `{"data": [...], "total": N}`.
 
@@ -138,12 +144,19 @@ RUST_LOG=govrix_scout_proxy=info
 
 ## NEVER Commit to OSS Repo
 
-- **NO docs, context files, session logs, or strategy docs** in govrix-scout ever
-- All product docs, roadmaps, session logs, and analysis live in the **enterprise `govrix` repo** only:
-  - `govrix/.context/SCOUT_MEMORY.md`
-  - `govrix/.context/SCOUT_SESSION_LOG.md`
-  - `govrix/Docs/govrix-scout/`
+- **NO context files, session logs, or strategy docs** in govrix-scout ever
+- The `docs/` folder is **gitignored** — local architecture/teaching docs only, never committed
 - This repo is public — anything committed here is visible to everyone
+
+## Scale tiers (documented in docs/architecture.html)
+
+| Tier | Topology | Req/s | Events/day |
+|------|----------|-------|------------|
+| 1 (default OSS) | Single proxy + TimescaleDB | ~5,000 | ~10M |
+| 2 (OSS optional, feature `redis-sink`) | N proxies + Redis Stream | ~15,000 | ~50M |
+| 3 (enterprise) | Redpanda + ClickHouse | unbounded | 1B+ |
+
+Anomaly v2 runs post-flush in `flush_batch` (zero hot-path cost). Cold-start SQL seeds EWMA + t-digest from last 24h.
 
 ---
 

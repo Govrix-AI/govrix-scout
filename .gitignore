@@ -30,3 +30,6 @@ pgdata/
 *.pid
 .linux-build/
 .worktrees/
+
+# Local-only architecture/teaching docs (not for OSS publish)
+docs/
