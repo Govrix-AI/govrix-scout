@@ -17,6 +17,7 @@ pub struct Config {
     pub retention: RetentionConfig,
     pub telemetry: TelemetryConfig,
     pub events: EventsConfig,
+    pub anomaly: AnomalyConfig,
 }
 
 /// Proxy server configuration.
@@ -88,6 +89,37 @@ impl Default for EventsConfig {
     }
 }
 
+/// Anomaly detection configuration (Stage 2 — post-flush detectors).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct AnomalyConfig {
+    /// Master switch for the post-flush anomaly orchestrator.
+    pub enabled: bool,
+    /// |z-score| threshold for cost anomalies (default 3.0).
+    pub cost_z_threshold: f64,
+    /// Latency must exceed `p99 * latency_p99_multiplier` to alert (default 1.5).
+    pub latency_p99_multiplier: f64,
+    /// Maximum number of (agent, model) sketch entries kept in memory.
+    pub state_lru_cap: usize,
+    /// How many hours of historical data to load on cold-start seed.
+    pub cold_start_window_hours: u32,
+    /// Error rate must exceed `baseline * error_rate_multiplier` to alert.
+    pub error_rate_multiplier: f64,
+}
+
+impl Default for AnomalyConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            cost_z_threshold: 3.0,
+            latency_p99_multiplier: 1.5,
+            state_lru_cap: 10_000,
+            cold_start_window_hours: 24,
+            error_rate_multiplier: 2.0,
+        }
+    }
+}
+
 /// REST API server configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ApiConfig {
@@ -144,6 +176,7 @@ impl Default for Config {
             retention: RetentionConfig::default(),
             telemetry: TelemetryConfig::default(),
             events: EventsConfig::default(),
+            anomaly: AnomalyConfig::default(),
         }
     }
 }

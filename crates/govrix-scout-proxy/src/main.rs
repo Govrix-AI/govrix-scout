@@ -77,7 +77,14 @@ async fn main() -> anyhow::Result<()> {
         writer_tasks: config.events.writer_tasks,
         batch_size: config.events.batch_size,
         batch_interval_ms: config.events.batch_interval_ms,
+        anomaly: config.anomaly.clone(),
     };
+    tracing::info!(
+        anomaly_enabled = config.anomaly.enabled,
+        cold_start_window_hours = config.anomaly.cold_start_window_hours,
+        state_lru_cap = config.anomaly.state_lru_cap,
+        "anomaly detection configured (cold-start seed runs per writer task)"
+    );
     let _writer_handles = events::spawn_writer_pool(
         event_rx,
         event_metrics,

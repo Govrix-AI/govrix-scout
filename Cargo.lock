@@ -999,6 +999,7 @@ dependencies = [
 name = "govrix-scout-proxy"
 version = "0.1.0"
 dependencies = [
+ "aho-corasick",
  "anyhow",
  "axum",
  "bytes",
@@ -1021,6 +1022,7 @@ dependencies = [
  "serde_yaml",
  "sha2",
  "sqlx",
+ "tdigest",
  "thiserror",
  "tokio",
  "tower",
@@ -1732,6 +1734,15 @@ name = "once_cell_polyfill"
 version = "1.70.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
+
+[[package]]
+name = "ordered-float"
+version = "2.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "68f19d67e5a2795c94e73e0bb1cc1a7edeb2e28efd39e2e1c9b7a40c1108b11c"
+dependencies = [
+ "num-traits",
+]
 
 [[package]]
 name = "parking"
@@ -2847,6 +2858,15 @@ name = "tap"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "55937e1799185b12863d447f42597ed69d9928686b8d88a1df17376a097d8369"
+
+[[package]]
+name = "tdigest"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c45d225a08ebccf0e0c7d46db4066ea8ab05b29d3750ecc1a04f1675978bf3c8"
+dependencies = [
+ "ordered-float",
+]
 
 [[package]]
 name = "thiserror"

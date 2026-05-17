@@ -212,6 +212,8 @@ pub struct WriterConfig {
     pub writer_tasks: usize,
     pub batch_size: usize,
     pub batch_interval_ms: u64,
+    /// Anomaly detection configuration, cloned into each writer task.
+    pub anomaly: govrix_scout_common::config::AnomalyConfig,
 }
 
 impl Default for WriterConfig {
@@ -220,6 +222,7 @@ impl Default for WriterConfig {
             writer_tasks: 4,
             batch_size: 500,
             batch_interval_ms: 50,
+            anomaly: govrix_scout_common::config::AnomalyConfig::default(),
         }
     }
 }
@@ -300,6 +303,40 @@ async fn run_writer_task(
 ) {
     let mut batch: Vec<AgentEvent> = Vec::with_capacity(cfg.batch_size);
     let batch_interval = tokio::time::Duration::from_millis(cfg.batch_interval_ms);
+    // Per-task anomaly orchestrator (state is approximate per task — acceptable).
+    let anomaly_cfg = cfg.anomaly.clone();
+    let mut orchestrator = crate::anomaly::AnomalyOrchestrator::from_config(&anomaly_cfg);
+
+    // Cold-start seed: load baseline (agent, model) stats from the DB once per
+    // writer task. Fail-soft: errors are logged but never abort the writer.
+    if anomaly_cfg.enabled {
+        if let Some(p) = pool.as_ref() {
+            let mut seeded_state =
+                crate::anomaly::AnomalyState::with_capacity(anomaly_cfg.state_lru_cap);
+            match crate::anomaly::state::seed_from_pool(
+                p,
+                &mut seeded_state,
+                anomaly_cfg.cold_start_window_hours,
+            )
+            .await
+            {
+                Ok(n) => {
+                    tracing::info!(
+                        seeded_pairs = n,
+                        window_hours = anomaly_cfg.cold_start_window_hours,
+                        "anomaly cold-start seed complete"
+                    );
+                    orchestrator.replace_state(seeded_state);
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        error = %e,
+                        "anomaly cold-start seed failed — detectors will warm up from live traffic"
+                    );
+                }
+            }
+        }
+    }
 
     loop {
         let deadline = tokio::time::Instant::now() + batch_interval;
@@ -331,7 +368,7 @@ async fn run_writer_task(
                                 "event channel closed, flushing {} remaining events",
                                 batch.len()
                             );
-                            flush_batch(&mut batch, &pool, &metrics, &seen_agents).await;
+                            flush_batch(&mut batch, &pool, &metrics, &seen_agents, &mut orchestrator).await;
                             return;
                         }
                     }
@@ -343,7 +380,7 @@ async fn run_writer_task(
         }
 
         if !batch.is_empty() {
-            flush_batch(&mut batch, &pool, &metrics, &seen_agents).await;
+            flush_batch(&mut batch, &pool, &metrics, &seen_agents, &mut orchestrator).await;
         }
     }
 }
@@ -356,6 +393,7 @@ async fn flush_batch(
     pool: &Option<govrix_scout_store::StorePool>,
     metrics: &Arc<Metrics>,
     seen_agents: &Arc<Cache<String, ()>>,
+    orchestrator: &mut crate::anomaly::AnomalyOrchestrator,
 ) {
     if batch.is_empty() {
         return;
@@ -385,6 +423,28 @@ async fn flush_batch(
                 count = batch.len(),
                 "flushing event batch (no DB pool — events discarded)"
             );
+        }
+    }
+
+    // ── Anomaly v2 post-flush ─────────────────────────────────────────────
+    // Run all detectors *after* the DB insert. Zero hot-path cost.
+    // STAGE-3: persist these alerts to `anomaly_alerts` hypertable.
+    if orchestrator.enabled {
+        let mut emitted = 0usize;
+        for ev in batch.iter() {
+            for alert in orchestrator.process(ev) {
+                tracing::info!(
+                    detector = %alert.detector,
+                    severity = %alert.severity,
+                    agent = %alert.agent_id,
+                    score = alert.score,
+                    "anomaly alert"
+                );
+                emitted += 1;
+            }
+        }
+        if emitted > 0 {
+            tracing::debug!(emitted, "anomaly alerts produced from batch");
         }
     }
 
