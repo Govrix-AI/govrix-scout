@@ -20,6 +20,7 @@ sqlx = { workspace = true }
 
 # Async runtime
 tokio = { workspace = true }
+async-trait = { workspace = true }
 
 # HTTP — hyper for hot path, axum for management API
 hyper = { workspace = true }
@@ -79,6 +80,15 @@ futures-util = { workspace = true }
 # stable Rust; we ship a tiny inline HLL in `anomaly::sketches` instead.
 tdigest = { workspace = true }
 aho-corasick = { workspace = true }
+
+# Tier-2 sink (optional, behind the `redis-sink` feature). The dep itself is
+# declared at workspace level; here we gate it on a feature so default builds
+# stay slim.
+redis = { workspace = true, optional = true }
+
+[features]
+default = []
+redis-sink = ["dep:redis"]
 
 [dev-dependencies]
 tokio = { workspace = true }

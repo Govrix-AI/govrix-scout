@@ -186,6 +186,12 @@ impl EventSender {
     pub fn metrics(&self) -> &Arc<EventMetrics> {
         &self.metrics
     }
+
+    /// Approximate current channel depth (max_capacity - available capacity).
+    /// Used by [`crate::events_sink::EventSink::depth`] for metrics.
+    pub fn approx_depth(&self) -> usize {
+        self.tx.max_capacity().saturating_sub(self.tx.capacity())
+    }
 }
 
 /// Create a new event channel with the default capacity.

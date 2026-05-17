@@ -67,6 +67,7 @@ pub struct DatabaseConfig {
 
 /// Event pipeline configuration (channel, writer tasks, batching).
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct EventsConfig {
     /// Capacity of the bounded mpsc event channel.
     pub channel_capacity: usize,
@@ -76,6 +77,9 @@ pub struct EventsConfig {
     pub batch_size: usize,
     /// Maximum interval (ms) to wait before flushing a partial batch.
     pub batch_interval_ms: u64,
+    /// Sink implementation: `"mpsc"` (default, in-process) or `"redis"`
+    /// (Tier-2, multi-replica via Redis Streams; requires `redis-sink` feature).
+    pub sink: String,
 }
 
 impl Default for EventsConfig {
@@ -85,6 +89,7 @@ impl Default for EventsConfig {
             writer_tasks: 4,
             batch_size: 500,
             batch_interval_ms: 50,
+            sink: "mpsc".to_string(),
         }
     }
 }

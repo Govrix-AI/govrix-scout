@@ -22,7 +22,8 @@ use govrix_scout_common::models::event::{AgentEvent, EventDirection, Provider};
 use govrix_scout_common::protocols::Protocol;
 use moka::sync::Cache;
 
-use crate::events::{compute_lineage_hash, EventSender, Metrics, SessionTracker};
+use crate::events::{compute_lineage_hash, Metrics, SessionTracker};
+use crate::events_sink::EventSink;
 use crate::policy::PolicyHook;
 use crate::proxy::streaming::SseAccumulator;
 use crate::proxy::upstream::UpstreamUrls;
@@ -43,7 +44,9 @@ pub enum AgentStatus {
 /// accessed via `Arc<InterceptorState>` without any wrapping mutex.
 pub struct InterceptorState {
     pub session_tracker: SessionTracker,
-    pub event_sender: EventSender,
+    /// Pluggable event sink (Stage 4). Defaults to in-process mpsc; can be
+    /// swapped for `RedisStreamSink` in multi-replica deployments.
+    pub event_sink: Arc<dyn EventSink>,
     /// Shared Prometheus-facing metrics counters.
     pub metrics: Arc<Metrics>,
     /// Policy hook — called after building each event to compute compliance_tag.
@@ -74,13 +77,13 @@ fn default_agent_status_cache(ttl_secs: u64) -> Arc<Cache<String, AgentStatus>> 
 
 impl InterceptorState {
     pub fn new(
-        event_sender: EventSender,
+        event_sink: Arc<dyn EventSink>,
         metrics: Arc<Metrics>,
         policy_hook: Arc<dyn PolicyHook>,
     ) -> Self {
         Self {
             session_tracker: SessionTracker::new(),
-            event_sender,
+            event_sink,
             metrics,
             policy_hook,
             upstream_urls: Arc::new(UpstreamUrls::default()),
@@ -93,14 +96,14 @@ impl InterceptorState {
 
     /// Create a new InterceptorState with custom upstream URLs.
     pub fn with_upstream_urls(
-        event_sender: EventSender,
+        event_sink: Arc<dyn EventSink>,
         metrics: Arc<Metrics>,
         policy_hook: Arc<dyn PolicyHook>,
         upstream_urls: UpstreamUrls,
     ) -> Self {
         Self {
             session_tracker: SessionTracker::new(),
-            event_sender,
+            event_sink,
             metrics,
             policy_hook,
             upstream_urls: Arc::new(upstream_urls),
@@ -116,7 +119,7 @@ impl InterceptorState {
     /// Use this constructor when a database connection is available so that the
     /// kill-switch (agent status) check is enforced on every proxied request.
     pub fn with_pool_and_upstream_urls(
-        event_sender: EventSender,
+        event_sink: Arc<dyn EventSink>,
         metrics: Arc<Metrics>,
         policy_hook: Arc<dyn PolicyHook>,
         upstream_urls: UpstreamUrls,
@@ -124,7 +127,7 @@ impl InterceptorState {
     ) -> Self {
         Self {
             session_tracker: SessionTracker::new(),
-            event_sender,
+            event_sink,
             metrics,
             policy_hook,
             upstream_urls: Arc::new(upstream_urls),
@@ -255,7 +258,7 @@ pub async fn log_request_event(ctx: &RequestContext, state: &InterceptorState) {
     state.metrics.requests_total.fetch_add(1, Ordering::Relaxed);
 
     // Fire-and-forget send
-    state.event_sender.send(event);
+    state.event_sink.send(event);
 }
 
 /// Build and send a response event to the event channel.
@@ -394,7 +397,7 @@ pub async fn log_response_event(
         .record_event(&ctx.agent_id, event_id, lineage_hash);
 
     // Fire-and-forget send
-    state.event_sender.send(event);
+    state.event_sink.send(event);
 }
 
 /// Analyze a request body (legacy tracing-only interface).

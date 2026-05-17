@@ -16,7 +16,8 @@ pub mod upstream;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use crate::events::{EventSender, Metrics};
+use crate::events::Metrics;
+use crate::events_sink::EventSink;
 use crate::policy::{NoOpPolicy, PolicyHook};
 pub use interceptor::InterceptorState;
 pub use upstream::UpstreamUrls;
@@ -28,22 +29,22 @@ pub use upstream::UpstreamUrls;
 /// The `metrics` Arc is shared with the management API for real counter reads.
 pub async fn serve(
     addr: SocketAddr,
-    event_sender: EventSender,
+    event_sink: Arc<dyn EventSink>,
     metrics: Arc<Metrics>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    serve_with_policy(addr, event_sender, metrics, Arc::new(NoOpPolicy)).await
+    serve_with_policy(addr, event_sink, metrics, Arc::new(NoOpPolicy)).await
 }
 
 /// Start the hyper proxy server with a custom policy hook and default upstream URLs.
 pub async fn serve_with_policy(
     addr: SocketAddr,
-    event_sender: EventSender,
+    event_sink: Arc<dyn EventSink>,
     metrics: Arc<Metrics>,
     policy_hook: Arc<dyn PolicyHook>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     serve_full(
         addr,
-        event_sender,
+        event_sink,
         metrics,
         policy_hook,
         UpstreamUrls::default(),
@@ -57,20 +58,12 @@ pub async fn serve_with_policy(
 /// with mock upstream servers.
 pub async fn serve_full(
     addr: SocketAddr,
-    event_sender: EventSender,
+    event_sink: Arc<dyn EventSink>,
     metrics: Arc<Metrics>,
     policy_hook: Arc<dyn PolicyHook>,
     upstream_urls: UpstreamUrls,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    serve_full_with_pool(
-        addr,
-        event_sender,
-        metrics,
-        policy_hook,
-        upstream_urls,
-        None,
-    )
-    .await
+    serve_full_with_pool(addr, event_sink, metrics, policy_hook, upstream_urls, None).await
 }
 
 /// Start the hyper proxy server with a database pool for kill-switch enforcement.
@@ -80,7 +73,7 @@ pub async fn serve_full(
 /// and the proxy operates in fail-open mode (same as `serve_full`).
 pub async fn serve_full_with_pool(
     addr: SocketAddr,
-    event_sender: EventSender,
+    event_sink: Arc<dyn EventSink>,
     metrics: Arc<Metrics>,
     policy_hook: Arc<dyn PolicyHook>,
     upstream_urls: UpstreamUrls,
@@ -88,14 +81,14 @@ pub async fn serve_full_with_pool(
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let state = if let Some(pool) = db_pool {
         InterceptorState::with_pool_and_upstream_urls(
-            event_sender,
+            event_sink,
             metrics,
             policy_hook,
             upstream_urls,
             pool,
         )
     } else {
-        InterceptorState::with_upstream_urls(event_sender, metrics, policy_hook, upstream_urls)
+        InterceptorState::with_upstream_urls(event_sink, metrics, policy_hook, upstream_urls)
     };
     serve_state(addr, Arc::new(state), None).await
 }

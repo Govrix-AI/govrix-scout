@@ -7,9 +7,14 @@ port = 4000
 bind = "0.0.0.0"
 fail_open = true
 upstream_timeout_ms = 30000
+# Maximum request/response body size to tee for capture (bytes); larger bodies bypass analysis.
 max_body_tee_bytes = 1048576
 upstream_openai = "https://api.openai.com"
 upstream_anthropic = "https://api.anthropic.com"
+# End-to-end proxy handler timeout in seconds (bounds long streaming responses).
+request_timeout_secs = 300
+# Kill-switch / agent status cache TTL in seconds (avoids per-request DB lookup).
+agent_cache_ttl_secs = 30
 
 [api]
 port = 4001
@@ -22,6 +27,35 @@ url = "postgres://govrix:govrix_scout_dev@localhost:5432/govrix"
 max_connections = 20
 min_connections = 2
 connect_timeout_secs = 10
+# Max connections for the API/read pool.
+api_pool_max = 30
+# Max connections for the writer/hot-path pool (api_pool_max + writer_pool_max should stay under Postgres max_connections).
+writer_pool_max = 70
+
+[events]
+# Capacity of the bounded mpsc event channel.
+channel_capacity = 100000
+# Number of background writer tasks pulling batches from the channel.
+writer_tasks = 4
+# Maximum events per batch before flushing.
+batch_size = 500
+# Maximum interval (ms) to wait before flushing a partial batch.
+batch_interval_ms = 50
+# TODO(stage-4): add `sink = "mpsc"` once EventsConfig.sink field lands in config.rs.
+
+[anomaly]
+# Master switch for the post-flush anomaly orchestrator.
+enabled = true
+# |z-score| threshold for cost anomalies.
+cost_z_threshold = 3.0
+# Latency must exceed p99 * this multiplier to alert.
+latency_p99_multiplier = 1.5
+# Max number of (agent, model) sketch entries kept in memory.
+state_lru_cap = 10000
+# Hours of historical data to load on cold-start seed.
+cold_start_window_hours = 24
+# Error rate must exceed baseline * this multiplier to alert.
+error_rate_multiplier = 2.0
 
 [retention]
 events_days = 30

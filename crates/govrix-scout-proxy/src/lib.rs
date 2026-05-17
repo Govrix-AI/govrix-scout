@@ -14,6 +14,7 @@ pub mod anomaly;
 pub mod api;
 pub mod circuit_breaker;
 pub mod events;
+pub mod events_sink;
 pub mod otlp;
 pub mod policy;
 pub mod proxy;

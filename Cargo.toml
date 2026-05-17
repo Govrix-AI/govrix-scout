@@ -23,6 +23,7 @@ rust-version = "1.75"
 [workspace.dependencies]
 # Async runtime
 tokio = { version = "1", features = ["full"] }
+async-trait = "0.1"
 
 # HTTP / networking
 hyper = { version = "1.6", features = ["full"] }

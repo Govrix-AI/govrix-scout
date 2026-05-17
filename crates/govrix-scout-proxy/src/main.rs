@@ -153,7 +153,10 @@ async fn main() -> anyhow::Result<()> {
         std::sync::Arc::new(policy_engine);
 
     // ── Proxy server ──────────────────────────────────────────────────────────
-    let proxy_event_sender = event_sender.clone();
+    // Stage 4: wrap the in-process sender behind the EventSink trait so the
+    // interceptor holds an Arc<dyn EventSink> and a Tier-2 redis sink can drop in.
+    let proxy_event_sender: std::sync::Arc<dyn govrix_scout_proxy::events_sink::EventSink> =
+        govrix_scout_proxy::events_sink::mpsc_sink(event_sender.clone());
     let proxy_metrics = metrics.clone();
     let upstream_urls = proxy::UpstreamUrls {
         openai: config.proxy.upstream_openai.clone(),

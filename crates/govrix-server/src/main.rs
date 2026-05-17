@@ -268,7 +268,8 @@ async fn main() -> anyhow::Result<()> {
         .parse()
         .expect("invalid proxy bind address");
 
-    let proxy_event_sender = event_sender.clone();
+    let proxy_event_sender: std::sync::Arc<dyn govrix_scout_proxy::events_sink::EventSink> =
+        govrix_scout_proxy::events_sink::mpsc_sink(event_sender.clone());
     let proxy_metrics = metrics.clone();
     let proxy_policy = policy_hook.clone();
     let proxy_handle = tokio::spawn(async move {
